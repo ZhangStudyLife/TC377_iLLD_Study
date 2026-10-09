@@ -1,0 +1,14 @@
+ACTIVE_CONFIG_NAME=Debug
+AppCompatibilitySet=1
+DEVICE_DESC=Frequency\= 300 MHz  \nPackage\= PG-LFBGA-292  \nCPUs\= 3 TriCore  \nFlash_Size\= 6 MB  \nDataFlash0_Size\= 256 KB  \nSRAM_Size\= 1.1 MB  \n
+DEVICE_NAME=TC377Tx_A-Step
+DEVICE_PACKAGE=PG-LFBGA-292
+DEVICE_PACK_VERSION=0.0.0
+DEVICE_PATH=/DeviceRoot/Microcontrollers/Devices/TC37x Series/TC377Tx_A-Step
+FLASH_SIZE=
+MBS_PROVIDER_ID_KEY=com.dave.mbs.aurix.AURIXTriCoreMbsFactory
+SOFTWARE_ID=TC3.7.7.STD
+TEMPLATE_KEY=com.ifx.ads2.aurix.emptyProjectTemplate
+USED_DAVE_VERSIONS=4.4.2
+eclipse.preferences.version=1
+minDaveVersion=4.4.2
