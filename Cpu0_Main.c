@@ -31,6 +31,7 @@
 #include "Port/Std/IfxPort.h"
 #include "Bsp.h"
 #include "App/Hardware/Led.h"
+#include "App/Hardware/Key.h"
 
 IFX_ALIGN(4)
 IfxCpu_syncEvent g_cpuSyncEvent = 0;
@@ -53,38 +54,23 @@ void core0_main(void)
 
 
     // 板子设计按键上拉 , 低电平按下
-    #define KEY_0_PORT &MODULE_P20
-    #define KEY_0_PIN 6
-    #define KEY_1_PORT &MODULE_P20
-    #define KEY_1_PIN 7
-    #define KEY_2_PORT &MODULE_P11
-    #define KEY_2_PIN 2
-    #define KEY_3_PORT &MODULE_P11
-    #define KEY_3_PIN 3
-    // 设置为 上拉输入
-    IfxPort_setPinModeInput(KEY_0_PORT, KEY_0_PIN, IfxPort_InputMode_pullUp);
-    IfxPort_setPinModeInput(KEY_1_PORT, KEY_1_PIN, IfxPort_InputMode_pullUp);
-    IfxPort_setPinModeInput(KEY_2_PORT, KEY_2_PIN, IfxPort_InputMode_pullUp);
-    IfxPort_setPinModeInput(KEY_3_PORT, KEY_3_PIN, IfxPort_InputMode_pullUp);
-    // 配置输入 Pad
-    IfxPort_setPinPadDriver(KEY_0_PORT, KEY_0_PIN, IfxPort_PadDriver_cmosAutomotiveSpeed4);
-    IfxPort_setPinPadDriver(KEY_1_PORT, KEY_1_PIN, IfxPort_PadDriver_cmosAutomotiveSpeed4);
-    IfxPort_setPinPadDriver(KEY_2_PORT, KEY_2_PIN, IfxPort_PadDriver_cmosAutomotiveSpeed4);
-    IfxPort_setPinPadDriver(KEY_3_PORT, KEY_3_PIN, IfxPort_PadDriver_cmosAutomotiveSpeed4);
+    // 按键与 LED 的引脚、按下极性等板级配置已封装进 App/Hardware/Key.h 的表驱动
+    // 这里只做一次初始化, 由 Key_Init() 按表逐键配置输入模式与 Pad 特性
 
     Led_Init();
+    Key_Init();
     while (1)
     {
-        if(IfxPort_getPinState(KEY_0_PORT, KEY_0_PIN) == 0)
+        // 按下第几个按键就点亮第几个灯: 轮询 Key_IsPressed(), 按下亮、松开灭
+        if(Key_IsPressed(KEY_0))
         {
             Led_On(LED_0);
         }
         else
         {
             Led_Off(LED_0);
-            
         }
-        if(IfxPort_getPinState(KEY_1_PORT, KEY_1_PIN) == 0)
+        if(Key_IsPressed(KEY_1))
         {
             Led_On(LED_1);
         }
@@ -92,24 +78,21 @@ void core0_main(void)
         {
             Led_Off(LED_1);
         }
-         if(IfxPort_getPinState(KEY_2_PORT, KEY_2_PIN) == 0)
+         if(Key_IsPressed(KEY_2))
         {
             Led_On(LED_2);
         }
         else
         {
             Led_Off(LED_2);
-            
         }
-        if(IfxPort_getPinState(KEY_3_PORT, KEY_3_PIN) == 0)
+        if(Key_IsPressed(KEY_3))
         {
             Led_On(LED_3);
         }
         else
         {
             Led_Off(LED_3);
-        }       
-
-
+        }
     }
 }
