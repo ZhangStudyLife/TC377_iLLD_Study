@@ -30,6 +30,8 @@
 #include "Ifx_Cfg_Ssw.h"
 #include "Port/Std/IfxPort.h"
 #include "Bsp.h"
+#include "App/Hardware/Led.h"
+
 IFX_ALIGN(4)
 IfxCpu_syncEvent g_cpuSyncEvent = 0;
 
@@ -47,34 +49,8 @@ void core0_main(void)
     IfxCpu_emitEvent(&g_cpuSyncEvent);
     IfxCpu_waitEvent(&g_cpuSyncEvent, 1);
 
-    // 配置引脚为输入 —— IfxPort_setPinModeInput
-    // 读引脚电平 —— IfxPort_getPinState
-    // 配置输入 Pad —— IfxPort_setPinPadDriver
 
-    #define LED_0_PORT &MODULE_P20
-    #define LED_0_PIN 9
-    #define LED_1_PORT &MODULE_P20
-    #define LED_1_PIN 8
-    #define LED_2_PORT &MODULE_P21
-    #define LED_2_PIN 5
-    #define LED_3_PORT &MODULE_P21
-    #define LED_3_PIN 4
 
-    // LED是上拉 , 低电平发光
-    IfxPort_setPinHigh(LED_0_PORT, LED_0_PIN);
-    IfxPort_setPinHigh(LED_1_PORT, LED_1_PIN);
-    IfxPort_setPinHigh(LED_2_PORT, LED_2_PIN);
-    IfxPort_setPinHigh(LED_3_PORT, LED_3_PIN);
-    // 设置为 推挽输出
-    IfxPort_setPinModeOutput(LED_0_PORT, LED_0_PIN, IfxPort_OutputMode_pushPull, IfxPort_OutputIdx_general);
-    IfxPort_setPinModeOutput(LED_1_PORT, LED_1_PIN, IfxPort_OutputMode_pushPull, IfxPort_OutputIdx_general);
-    IfxPort_setPinModeOutput(LED_2_PORT, LED_2_PIN, IfxPort_OutputMode_pushPull, IfxPort_OutputIdx_general);
-    IfxPort_setPinModeOutput(LED_3_PORT, LED_3_PIN, IfxPort_OutputMode_pushPull, IfxPort_OutputIdx_general);
-    // 设置 鲁棒性最强的 CMOS汽车级别 速度等级设置为4
-    IfxPort_setPinPadDriver(LED_0_PORT, LED_0_PIN, IfxPort_PadDriver_cmosAutomotiveSpeed4);
-    IfxPort_setPinPadDriver(LED_1_PORT, LED_1_PIN, IfxPort_PadDriver_cmosAutomotiveSpeed4);
-    IfxPort_setPinPadDriver(LED_2_PORT, LED_2_PIN, IfxPort_PadDriver_cmosAutomotiveSpeed4);
-    IfxPort_setPinPadDriver(LED_3_PORT, LED_3_PIN, IfxPort_PadDriver_cmosAutomotiveSpeed4);
 
     // 板子设计按键上拉 , 低电平按下
     #define KEY_0_PORT &MODULE_P20
@@ -96,39 +72,44 @@ void core0_main(void)
     IfxPort_setPinPadDriver(KEY_2_PORT, KEY_2_PIN, IfxPort_PadDriver_cmosAutomotiveSpeed4);
     IfxPort_setPinPadDriver(KEY_3_PORT, KEY_3_PIN, IfxPort_PadDriver_cmosAutomotiveSpeed4);
 
+    Led_Init();
     while (1)
     {
         if(IfxPort_getPinState(KEY_0_PORT, KEY_0_PIN) == 0)
         {
-            IfxPort_setPinLow(LED_0_PORT, LED_0_PIN);
+            Led_On(LED_0);
         }
         else
         {
-            IfxPort_setPinHigh(LED_0_PORT, LED_0_PIN);
+            Led_Off(LED_0);
+            
         }
         if(IfxPort_getPinState(KEY_1_PORT, KEY_1_PIN) == 0)
         {
-            IfxPort_setPinLow(LED_1_PORT, LED_1_PIN);
+            Led_On(LED_1);
         }
         else
         {
-            IfxPort_setPinHigh(LED_1_PORT, LED_1_PIN);
+            Led_Off(LED_1);
         }
-        if(IfxPort_getPinState(KEY_2_PORT, KEY_2_PIN) == 0)
+         if(IfxPort_getPinState(KEY_2_PORT, KEY_2_PIN) == 0)
         {
-            IfxPort_setPinLow(LED_2_PORT, LED_2_PIN);
+            Led_On(LED_2);
         }
         else
         {
-            IfxPort_setPinHigh(LED_2_PORT, LED_2_PIN);
+            Led_Off(LED_2);
+            
         }
         if(IfxPort_getPinState(KEY_3_PORT, KEY_3_PIN) == 0)
         {
-            IfxPort_setPinLow(LED_3_PORT, LED_3_PIN);
+            Led_On(LED_3);
         }
         else
         {
-            IfxPort_setPinHigh(LED_3_PORT, LED_3_PIN);
-        }
+            Led_Off(LED_3);
+        }       
+
+
     }
 }

@@ -29,6 +29,8 @@
 								<option id="org.eclipse.cdt.cross.tricore.gnu.c.compiler.option.debug.format.1938241802" name="Format" superClass="org.eclipse.cdt.cross.tricore.gnu.c.compiler.option.debug.format" useByScannerDiscovery="false"/>
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="org.eclipse.cdt.cross.tricore.gnu.c.compiler.option.include.paths.1999912532" name="Include paths (-I)" superClass="org.eclipse.cdt.cross.tricore.gnu.c.compiler.option.include.paths" useByScannerDiscovery="false" valueType="includePath">
 									<listOptionValue builtIn="false" value="../"/>
+									<listOptionValue builtIn="false" value="../App"/>
+									<listOptionValue builtIn="false" value="../App/Hardware"/>
 									<listOptionValue builtIn="false" value="../Configurations"/>
 									<listOptionValue builtIn="false" value="../Libraries"/>
 									<listOptionValue builtIn="false" value="../Libraries/Infra"/>
