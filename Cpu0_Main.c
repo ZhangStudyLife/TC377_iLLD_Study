@@ -32,9 +32,43 @@
 #include "Bsp.h"
 #include "App/Hardware/Led.h"
 #include "App/Hardware/Key.h"
+#include "IfxStm_Timer.h"
+
 
 IFX_ALIGN(4)
 IfxCpu_syncEvent g_cpuSyncEvent = 0;
+
+
+// 定时器中断优先级 = 2
+#define ISR_PRIORITY_TIMER_1000MS (2)
+// 中断服务提供者 = CPU0
+#define ISR_PROVIDER_TIMER_1000MS IfxSrc_Tos_cpu0
+
+IfxStm_Timer myTimer;   // 定义一个 STM 定时器驱动对象
+
+boolean AppInit_1000ms(void)
+{
+    boolean result = TRUE;
+    IfxStm_Timer_Config timerConfig;           // 配置结构体
+    IfxStm_Timer_initConfig(&timerConfig, &MODULE_STM0);   // 拿默认配置（基于 STM0）
+    timerConfig.base.frequency     = 1;     // 中断频率 = 1Hz（即 1000ms 一次）
+    timerConfig.base.isrPriority   = ISR_PRIORITY_TIMER_1000MS;   // 中断优先级
+    timerConfig.base.isrProvider   = ISR_PROVIDER_TIMER_1000MS;   // 中断目标 CPU
+    timerConfig.base.minResolution = (1.0f / timerConfig.base.frequency) / 1000;  // 最小分辨率
+    timerConfig.comparator         = IfxStm_Comparator_0;  // 用比较器 0
+    result = IfxStm_Timer_init(&myTimer, &timerConfig);    // 真正初始化
+    IfxStm_Timer_run(&myTimer);   // 启动定时器
+    return result;
+}
+
+// 中断服务函数：IFX_INTERRUPT(函数名, 保留位, 优先级)
+IFX_INTERRUPT(ISR_TIMER_1000ms, 0, ISR_PRIORITY_TIMER_1000MS)
+{
+    __enable();                    // 重新使能中断（允许嵌套/继续响应）
+    IfxStm_Timer_acknowledgeTimerIrq(&myTimer);   // ★关键：清中断标志 + 设置下一次比较值
+    Led_Toggle(LED_0);   // 每次中断切换 LED0
+}
+
 
 void core0_main(void)
 {
@@ -50,49 +84,13 @@ void core0_main(void)
     IfxCpu_emitEvent(&g_cpuSyncEvent);
     IfxCpu_waitEvent(&g_cpuSyncEvent, 1);
 
-
-
-
-    // 板子设计按键上拉 , 低电平按下
-    // 按键与 LED 的引脚、按下极性等板级配置已封装进 App/Hardware/Key.h 的表驱动
-    // 这里只做一次初始化, 由 Key_Init() 按表逐键配置输入模式与 Pad 特性
-
     Led_Init();
     Key_Init();
+    AppInit_1000ms();
+
+
     while (1)
     {
-        // 按下第几个按键就点亮第几个灯: 轮询 Key_IsPressed(), 按下亮、松开灭
-        if(Key_IsPressed(KEY_0))
-        {
-            Led_On(LED_0);
-        }
-        else
-        {
-            Led_Off(LED_0);
-        }
-        if(Key_IsPressed(KEY_1))
-        {
-            Led_On(LED_1);
-        }
-        else
-        {
-            Led_Off(LED_1);
-        }
-         if(Key_IsPressed(KEY_2))
-        {
-            Led_On(LED_2);
-        }
-        else
-        {
-            Led_Off(LED_2);
-        }
-        if(Key_IsPressed(KEY_3))
-        {
-            Led_On(LED_3);
-        }
-        else
-        {
-            Led_Off(LED_3);
-        }
+
     }
 }
