@@ -32,44 +32,53 @@
 #include "Bsp.h"
 #include "App/Hardware/Led.h"
 #include "App/Hardware/Key.h"
-#include "IfxStm_Timer.h"
 
+#include "IfxGtm_Tom_Pwm.h" // GTM TOM PWM 驱动
+IfxGtm_Tom_Pwm_Driver g_tomPwmDriver;
+
+void Gtm_Pwm_Init()
+{
+    // 1. 使能 GTM 模块（GTM 默认是关闭的，要先打开）
+    IfxGtm_enable(&MODULE_GTM);
+
+    // 2. 配置时钟：
+    //    读取 GTM 模块的输入频率（系统时钟分频给 GTM 的）
+    float32 freq = IfxGtm_Cmu_getModuleFrequency(&MODULE_GTM);
+    // 设 GTM 全局时钟 GCLK 为最大频率（所有子模块的母钟）
+    IfxGtm_Cmu_setGclkFrequency(&MODULE_GTM, freq);
+    // 配置 CLK0；TOM 通道选择的是 FXCLK0，而不是直接选择 CLK0
+    IfxGtm_Cmu_setClkFrequency(&MODULE_GTM, IfxGtm_Cmu_Clk_0, freq);
+    // 使能 CLK0 和 FXCLK 时钟（TOM 通道实际要用）
+    IfxGtm_Cmu_enableClocks(&MODULE_GTM,
+                            IFXGTM_CMU_CLKEN_FXCLK | IFXGTM_CMU_CLKEN_CLK0);
+
+    // 3. 配置 TOM PWM：
+    IfxGtm_Tom_Pwm_Config config;                                  // 配置结构体
+    IfxGtm_Tom_Pwm_initConfig(&config, &MODULE_GTM);               // 填默认值
+    config.tom = IfxGtm_Tom_0;                                     // 用 TOM0
+    config.tomChannel = IfxGtm_Tom_Ch_5;                           // TOM0 通道 5，输出到 P21.4
+    config.period = 5000;                                          // 周期 = 5000 tick
+    config.dutyCycle = 0;                                          // 初始占空比 0%
+    config.clock = IfxGtm_Tom_Ch_ClkSrc_cmuFxclk0;                 // TOM 时钟源 = FXCLK0
+    config.pin.outputPin = &IfxGtm_TOM0_5_TOUT55_P21_4_OUT;        // 输出到 P21.4，LED0 是 P20.9
+    config.pin.outputMode = IfxPort_OutputMode_pushPull;           // 推挽
+    config.pin.padDriver = IfxPort_PadDriver_cmosAutomotiveSpeed1; // P21.4 为 SLOW pad，选较快边沿
+
+    // 4. 初始化并将 P21.4 复用为 TOM 输出
+    IfxGtm_Tom_Pwm_init(&g_tomPwmDriver, &config);
+
+    // 5. 启动 PWM
+    IfxGtm_Tom_Pwm_start(&g_tomPwmDriver, TRUE);
+}
 
 IFX_ALIGN(4)
 IfxCpu_syncEvent g_cpuSyncEvent = 0;
-
-
-// 定时器中断优先级 = 2
-#define ISR_PRIORITY_TIMER_1000MS (2)
-// 中断服务提供者 = CPU0
-#define ISR_PROVIDER_TIMER_1000MS IfxSrc_Tos_cpu0
-
-IfxStm_Timer myTimer;   // 定义一个 STM 定时器驱动对象
-
-boolean AppInit_1000ms(void)
+void delay_ms(float time)
 {
-    boolean result = TRUE;
-    IfxStm_Timer_Config timerConfig;           // 配置结构体
-    IfxStm_Timer_initConfig(&timerConfig, &MODULE_STM0);   // 拿默认配置（基于 STM0）
-    timerConfig.base.frequency     = 1;     // 中断频率 = 1Hz（即 1000ms 一次）
-    timerConfig.base.isrPriority   = ISR_PRIORITY_TIMER_1000MS;   // 中断优先级
-    timerConfig.base.isrProvider   = ISR_PROVIDER_TIMER_1000MS;   // 中断目标 CPU
-    timerConfig.base.minResolution = (1.0f / timerConfig.base.frequency) / 1000;  // 最小分辨率
-    timerConfig.comparator         = IfxStm_Comparator_0;  // 用比较器 0
-    result = IfxStm_Timer_init(&myTimer, &timerConfig);    // 真正初始化
-    IfxStm_Timer_run(&myTimer);   // 启动定时器
-    return result;
+    IfxStm_waitTicks(
+        &MODULE_STM0,
+        IfxStm_getTicksFromMilliseconds(&MODULE_STM0, time));
 }
-
-// 中断服务函数：IFX_INTERRUPT(函数名, 保留位, 优先级)
-IFX_INTERRUPT(ISR_TIMER_1000ms, 0, ISR_PRIORITY_TIMER_1000MS)
-{
-    __enable();                    // 重新使能中断（允许嵌套/继续响应）
-    IfxStm_Timer_acknowledgeTimerIrq(&myTimer);   // ★关键：清中断标志 + 设置下一次比较值
-    Led_Toggle(LED_0);   // 每次中断切换 LED0
-}
-
-
 void core0_main(void)
 {
     IfxCpu_enableInterrupts();
@@ -83,14 +92,22 @@ void core0_main(void)
     /* Wait for CPU sync event */
     IfxCpu_emitEvent(&g_cpuSyncEvent);
     IfxCpu_waitEvent(&g_cpuSyncEvent, 1);
-
-    Led_Init();
-    Key_Init();
-    AppInit_1000ms();
-
-
+    Gtm_Pwm_Init();
+    float duty = 20;
+    float dir = 1;
     while (1)
     {
 
+        IfxGtm_Tom_Pwm_setDuty(&g_tomPwmDriver, duty);
+        duty += 1*dir;
+        if (duty > 100){
+            duty = 100;
+            dir = -1;
+        }
+        if (duty < 50){
+            duty = 50;
+            dir = 1;
+        }
+        delay_ms(10);
     }
 }
