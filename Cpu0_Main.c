@@ -34,6 +34,38 @@
 #include "App/Hardware/Key.h"
 
 #include "IfxGtm_Tom_Pwm.h" // GTM TOM PWM 驱动
+
+/* 时钟学习入口（频率查询结果统一为 Hz；1 MHz = 1000000 Hz）
+ * SCU = System Control Unit，系统控制单元；CCU = Clock Control Unit，时钟控制单元。
+ * SCU 的 CCU 管理系统时钟，与捕获比较定时器 CCU6 不是同一个模块。
+ * XTAL 是外部晶振；PLL = Phase-Locked Loop，锁相环，用参考时钟生成更高频率。
+ * 本工程 Configurations/Ifx_Cfg.h：XTAL 20 MHz，系统 PLL 300 MHz，
+ * 外设 PLL 两路输出分别为 320 MHz、200 MHz；启动代码在 core0_main 前初始化时钟。
+ * 当前默认分频目标：CPU0/1/2 与 SRI 300 MHz，SPB 与 STM 100 MHz，GTM 200 MHz。
+ * 这些是配置目标，最终应查询运行时寄存器；分频字段的编码不一定等于数学分母。
+ * 查询函数根据寄存器和工程填写的晶振频率计算结果，不是物理频率测量仪。
+ *
+ * 本例的 PWM 时钟路径：
+ * 系统时钟分配 -> GTM 系统时钟 -> Cluster 0 -> CMU -> GCLK
+ *                                               -> CLK0 等可配置时钟
+ * GCLK 或选中的 CLK0~CLK7 -> FXCLK 固定分频 -> TOM 通道 -> PWM 引脚。
+ * 外设的总线接口时钟、内部功能时钟、最终输出频率是不同概念。
+ * CPU 写 GTM 寄存器后，TOM 硬件使用自身时钟计数，无需 CPU 逐个生成 PWM 边沿。
+ */
+#include "IfxScuCcu.h"          // Scu的意思是 System Control Unit，CCU是Clock Control Unit的意思，主要是用来配置时钟的
+#include "IfxGtm_Cmu.h"         // Gtm的意思是 Generic Timer Module，CMU是Clock Management Unit的意思，主要是用来配置GTM模块的时钟的
+
+// float32 为 32 位浮点数；volatile 要求编译器保留对变量的实际访问，便于观察。
+// volatile 不会自动刷新调试窗口，也不保证多核同步；全局变量可加入 Expressions。
+volatile float32 cpu0Hz, cpu1Hz, cpu2Hz; // 各 CPU 核时钟；主频不等于每秒执行指令数
+// SRI = Shared Resource Interconnect，共享资源互连，连接 CPU、存储器等高带宽资源。
+// SPB = System Peripheral Bus，系统外设总线，用于外设寄存器访问等。
+// STM = System Timer，系统定时器；GTM = Generic Timer Module，通用定时器模块。
+volatile float32 sriHz, spbHz, stmHz, gtmHz;
+// CMU = Clock Management Unit，GTM 内部的时钟管理单元。
+// GCLK = Global Clock，CMU 全局时钟；CLK0 为可配置时钟，FXCLK 为固定分频时钟。
+volatile float32 cmuHz, gclkHz, clk0Hz, fxclk0Hz;
+
 IfxGtm_Tom_Pwm_Driver g_tomPwmDriver;
 
 void Gtm_Pwm_Init()
@@ -42,11 +74,14 @@ void Gtm_Pwm_Init()
     IfxGtm_enable(&MODULE_GTM);
 
     // 2. 配置时钟：
-    //    读取 GTM 模块的输入频率（系统时钟分频给 GTM 的）
+    //    本版 iLLD 返回 CMU 输入频率，即 Cluster 0 时钟；不一定等于 GTM 系统时钟
     float32 freq = IfxGtm_Cmu_getModuleFrequency(&MODULE_GTM);
-    // 设 GTM 全局时钟 GCLK 为最大频率（所有子模块的母钟）
+    // 将 CMU 的 GCLK 设为输入频率；此处不再降频，不表示所有 GTM 子模块都直接用 GCLK
     IfxGtm_Cmu_setGclkFrequency(&MODULE_GTM, freq);
-    // 配置 CLK0；TOM 通道选择的是 FXCLK0，而不是直接选择 CLK0
+    // 将可配置 CLK0 设为 freq；本例 TOM 实际选择 FXCLK0。
+    // FXCLK 来源由 CMU.FXCLK.CTRL.FXCLK_SEL 决定：0 选 GCLK，1~8 选 CLK0~CLK7。
+    // 仅配置/使能 CLK0 不会自动把 FXCLK 来源切换为 CLK0。
+    // FXCLK0/1/2/3/4 对所选来源分别分频 1/16/256/4096/65536。
     IfxGtm_Cmu_setClkFrequency(&MODULE_GTM, IfxGtm_Cmu_Clk_0, freq);
     // 使能 CLK0 和 FXCLK 时钟（TOM 通道实际要用）
     IfxGtm_Cmu_enableClocks(&MODULE_GTM,
@@ -57,8 +92,11 @@ void Gtm_Pwm_Init()
     IfxGtm_Tom_Pwm_initConfig(&config, &MODULE_GTM);               // 填默认值
     config.tom = IfxGtm_Tom_0;                                     // 用 TOM0
     config.tomChannel = IfxGtm_Tom_Ch_5;                           // TOM0 通道 5，输出到 P21.4
-    config.period = 5000;                                          // 周期 = 5000 tick
-    config.dutyCycle = 0;                                          // 初始占空比 0%
+    config.period = 5000;                                          // 周期计数 = 5000 tick，不是 5000 us
+    // tick 是通道时钟的一次计数：每 tick 时间 = 1 / fFXCLK0。
+    // 当前边沿对齐 PWM：周期 = 5000 / fFXCLK0，频率 = fFXCLK0 / 5000。
+    // 若实际 FXCLK0 = 200 MHz，则 PWM = 40 kHz，周期 25 us。
+    config.dutyCycle = 0;                                          // 初始化参数单位为 tick；0 tick 对应初始 0%
     config.clock = IfxGtm_Tom_Ch_ClkSrc_cmuFxclk0;                 // TOM 时钟源 = FXCLK0
     config.pin.outputPin = &IfxGtm_TOM0_5_TOUT55_P21_4_OUT;        // 输出到 P21.4，LED0 是 P20.9
     config.pin.outputMode = IfxPort_OutputMode_pushPull;           // 推挽
@@ -73,6 +111,9 @@ void Gtm_Pwm_Init()
 
 IFX_ALIGN(4)
 IfxCpu_syncEvent g_cpuSyncEvent = 0;
+// STM 按自身时钟计数，与 CPU 主频不同；100 MHz 时每 tick 为 10 ns。
+// 毫秒转 tick：ticks = fSTM * time / 1000；waitTicks 为忙等，CPU 在此等待。
+// 本例 10 ms 是亮度更新间隔，不是 PWM 周期；等待期间 TOM 仍可生成 PWM。
 void delay_ms(float time)
 {
     IfxStm_waitTicks(
@@ -98,13 +139,40 @@ void core0_main(void)
     while (1)
     {
 
+        // 以下查询不会修改时钟；在全部赋值之后暂停，再在 Expressions 查看。
+        // CPU 时钟由 SCU 的 CCU 配置，所以查询入口是 IfxScuCcu，而不是 IfxCpu。
+        cpu0Hz = IfxScuCcu_getCpuFrequency(IfxCpu_ResourceCpu_0);        // 查询CPU0 当前的频率
+        cpu1Hz = IfxScuCcu_getCpuFrequency(IfxCpu_ResourceCpu_1);        // 查询CPU1 当前的频率
+        cpu2Hz = IfxScuCcu_getCpuFrequency(IfxCpu_ResourceCpu_2);        // 查询CPU2 当前的频率
+
+        sriHz = IfxScuCcu_getSriFrequency();                             // 查询SRI总线频率
+        spbHz = IfxScuCcu_getSpbFrequency();                             // 查询SPB总线频率
+        stmHz = IfxScuCcu_getStmFrequency();                             // 查询STM模块频率
+        gtmHz = IfxScuCcu_getGtmFrequency(); // GTM 系统输入时钟，尚未经过 Cluster/CMU 分频
+
+        cmuHz = IfxGtm_Cmu_getModuleFrequency(&MODULE_GTM); // CMU 输入 = Cluster 0 时钟
+        gclkHz = IfxGtm_Cmu_getGclkFrequency(&MODULE_GTM); // CMU 全局分频后的时钟
+        // FALSE 表示不假定时钟已使能：实际未使能时可返回 0。
+        // clk0Hz 与 fxclk0Hz 分别查询两条时钟；TOM0 CH5 在本例使用后者。
+        clk0Hz = IfxGtm_Cmu_getClkFrequency(
+            &MODULE_GTM, IfxGtm_Cmu_Clk_0, FALSE);
+        fxclk0Hz = IfxGtm_Cmu_getFxClkFrequency(
+            &MODULE_GTM, IfxGtm_Cmu_Fxclk_0, FALSE);
+
+
+        // 本仓库 setDuty 接收百分比，内部换算为 period * duty / 100 个 tick。
+        // 注意与初始化 config.dutyCycle 的 tick 单位不同。
+        // 同步更新模式写 SR1 影子寄存器，按硬件更新事件转入 CM1；
+        // 非同步模式直接写 CM1。CM0 为周期比较值，CM1 为占空比比较值，CN0 为计数器。
         IfxGtm_Tom_Pwm_setDuty(&g_tomPwmDriver, duty);
-        duty += 1*dir;
-        if (duty > 100){
+        duty += 1 * dir;
+        if (duty > 100)
+        {
             duty = 100;
             dir = -1;
         }
-        if (duty < 50){
+        if (duty < 50)
+        {
             duty = 50;
             dir = 1;
         }
