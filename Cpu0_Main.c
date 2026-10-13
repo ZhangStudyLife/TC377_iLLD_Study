@@ -189,6 +189,7 @@ void core0_main(void)
             &MODULE_GTM, IfxGtm_Cmu_Fxclk_0, FALSE);
 
         uint32 ips200Start = IfxStm_getLower(&MODULE_STM0);
+        // 下面这个语句花费时间 2047 us时间 , 在当前测试方式情况下
         Ips200_ShowString(0, 0, "CPU0: ");
         // 无符号减法允许 STM 低 32 位回绕；计时包含期间发生的中断和少量读计数开销。
         // 不要在这两次 STM 读取之间单步或设断点，否则暂停时间可能影响结果。
