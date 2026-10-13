@@ -157,9 +157,8 @@ void core0_main(void)
     /* Wait for CPU sync event */
     IfxCpu_emitEvent(&g_cpuSyncEvent);
     IfxCpu_waitEvent(&g_cpuSyncEvent, 1);
-    Stm_Timer_Init();
-    delay_ms(20);
     Gtm_Pwm_Init();
+    Stm_Timer_Init();
     // 先初始化 PWM，再启动 STM，保证首次中断访问的是已初始化的驱动。
     while (1)
     {
