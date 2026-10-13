@@ -6,6 +6,8 @@
 #include "Bsp.h"
 #include "App/Hardware/Led.h"
 #include "App/Hardware/Key.h"
+#include "App/Hardware/ips200.h"
+
 
 #include "IfxGtm_Tom_Pwm.h" // GTM TOM PWM 驱动
 #include "IfxStm_Timer.h"   // STM 周期中断驱动
@@ -33,6 +35,7 @@
 // float32 为 32 位浮点数；volatile 要求编译器保留对变量的实际访问，便于观察。
 // volatile 不会自动刷新调试窗口，也不保证多核同步；全局变量可加入 Expressions。
 volatile float32 cpu0Hz, cpu1Hz, cpu2Hz; // 各 CPU 核时钟；主频不等于每秒执行指令数
+volatile float32 ips200StringUs; // 最近一次显示 "CPU0: " 的耗时，单位 us，加入 Expressions 观察
 // SRI = Shared Resource Interconnect，共享资源互连，连接 CPU、存储器等高带宽资源。
 // SPB = System Peripheral Bus，系统外设总线，用于外设寄存器访问等。
 // STM = System Timer，系统定时器；GTM = Generic Timer Module，通用定时器模块。
@@ -160,6 +163,8 @@ void core0_main(void)
     Gtm_Pwm_Init();
     Stm_Timer_Init();
     // 先初始化 PWM，再启动 STM，保证首次中断访问的是已初始化的驱动。
+    Ips200_Init();
+    Ips200_Clear();
     while (1)
     {
 
@@ -183,6 +188,14 @@ void core0_main(void)
         fxclk0Hz = IfxGtm_Cmu_getFxClkFrequency(
             &MODULE_GTM, IfxGtm_Cmu_Fxclk_0, FALSE);
 
-        // 主循环不再忙等，也不更新占空比；10 ms 更新工作由 STM 中断完成。
+        uint32 ips200Start = IfxStm_getLower(&MODULE_STM0);
+        Ips200_ShowString(0, 0, "CPU0: ");
+        // 无符号减法允许 STM 低 32 位回绕；计时包含期间发生的中断和少量读计数开销。
+        // 不要在这两次 STM 读取之间单步或设断点，否则暂停时间可能影响结果。
+        ips200StringUs = (float32)(IfxStm_getLower(&MODULE_STM0) - ips200Start)
+                         * 1000000.0f / stmHz;
+        Ips200_ShowFloat(50, 0, cpu0Hz / 1000000, 2);
+        Ips200_ShowFloat(50, 16, ips200StringUs, 2);
+
     }
 }
