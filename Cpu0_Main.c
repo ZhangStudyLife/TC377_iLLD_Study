@@ -35,7 +35,7 @@
 // float32 为 32 位浮点数；volatile 要求编译器保留对变量的实际访问，便于观察。
 // volatile 不会自动刷新调试窗口，也不保证多核同步；全局变量可加入 Expressions。
 volatile float32 cpu0Hz, cpu1Hz, cpu2Hz; // 各 CPU 核时钟；主频不等于每秒执行指令数
-volatile float32 ips200StringUs; // 最近一次显示 "CPU0: " 的耗时，单位 us，加入 Expressions 观察
+volatile float32 ips200StringUs; // 100 轮完整 IPS200 测试的平均耗时，单位 us
 // SRI = Shared Resource Interconnect，共享资源互连，连接 CPU、存储器等高带宽资源。
 // SPB = System Peripheral Bus，系统外设总线，用于外设寄存器访问等。
 // STM = System Timer，系统定时器；GTM = Generic Timer Module，通用定时器模块。
@@ -160,43 +160,61 @@ void core0_main(void)
     /* Wait for CPU sync event */
     IfxCpu_emitEvent(&g_cpuSyncEvent);
     IfxCpu_waitEvent(&g_cpuSyncEvent, 1);
-    Gtm_Pwm_Init();
-    Stm_Timer_Init();
+    // Gtm_Pwm_Init();
+    // Stm_Timer_Init();
     // 先初始化 PWM，再启动 STM，保证首次中断访问的是已初始化的驱动。
     Ips200_Init();
     Ips200_Clear();
+    // 测试图像提前生成，图像生成耗时不计入屏幕接口测试。
+    static uint16 testImage[64 * 64];
+    for (uint16 y = 0; y < 64; ++y)
+        for (uint16 x = 0; x < 64; ++x)
+            testImage[y * 64 + x] = ((x >> 1) << 11) | (y << 5) | ((x + y) >> 2);
+    stmHz = IfxStm_getFrequency(&MODULE_STM0);
+    uint64 ips200Ticks = 0;
+    // 每轮单独计时，再累加；整批测试可能跨越多次 STM 低 32 位回绕。
+    for (int i = 0; i < 5; i++)
+    {
+        uint32 ips200Start = IfxStm_getLower(&MODULE_STM0);
+        Ips200_SetColor(IPS200_WHITE, IPS200_BLACK);
+        Ips200_Clear();
+        // 全屏基本颜色测试，最后回到黑色以显示后续图形。
+        Ips200_Fill(IPS200_RED);
+        Ips200_Fill(IPS200_GREEN);
+        Ips200_Fill(IPS200_BLUE);
+        Ips200_Fill(IPS200_YELLOW);
+        Ips200_Fill(IPS200_CYAN);
+        Ips200_Fill(IPS200_MAGENTA);
+        Ips200_Fill(IPS200_WHITE);
+        Ips200_Fill(IPS200_BLACK);
+
+        Ips200_DrawPoint(0, 0, IPS200_RED);
+        Ips200_DrawPoint(239, 0, IPS200_GREEN);
+        Ips200_DrawPoint(0, 319, IPS200_BLUE);
+        Ips200_DrawPoint(239, 319, IPS200_WHITE);
+        Ips200_DrawLine(8, 96, 231, 96, IPS200_YELLOW);   // 水平
+        Ips200_DrawLine(8, 100, 8, 190, IPS200_CYAN);     // 垂直
+        Ips200_DrawLine(16, 112, 104, 184, IPS200_RED);   // 正斜率
+        Ips200_DrawLine(104, 112, 16, 184, IPS200_BLUE);  // 反向、负斜率
+        Ips200_DrawLine(48, 112, 64, 184, IPS200_MAGENTA); // 陡斜率
+        Ips200_DrawLine(104, 148, 16, 160, IPS200_CYAN);  // 缓斜率
+        Ips200_DrawRect(120, 112, 104, 80, IPS200_WHITE);
+        Ips200_FillRect(136, 128, 72, 48, IPS200_GREEN);
+
+        Ips200_ShowChar(8, 8, 'A');
+        Ips200_ShowString(24, 8, "IPS200 RGB565 TEST");
+        Ips200_ShowInt(8, 32, -2147483647 - 1);
+        Ips200_ShowUint(8, 48, 4294967295U);
+        Ips200_ShowFloat(8, 64, -123.456789, 6);
+        Ips200_ShowRgb565Image(16, 216, testImage, 64, 64);
+        ips200Ticks += (uint32)(IfxStm_getLower(&MODULE_STM0) - ips200Start);
+    }
+    // 包含发生的中断和少量读计数开销；不要在计时区间单步或设断点。
+    ips200StringUs = (float32)((float64)ips200Ticks * 1000000.0 / stmHz / 100.0);
     while (1)
     {
-
-        // 以下查询不会修改时钟；在全部赋值之后暂停，再在 Expressions 查看。
-        // CPU 时钟由 SCU 的 CCU 配置，所以查询入口是 IfxScuCcu，而不是 IfxCpu。
-        cpu0Hz = IfxScuCcu_getCpuFrequency(IfxCpu_ResourceCpu_0); // 查询CPU0 当前的频率
-        cpu1Hz = IfxScuCcu_getCpuFrequency(IfxCpu_ResourceCpu_1); // 查询CPU1 当前的频率
-        cpu2Hz = IfxScuCcu_getCpuFrequency(IfxCpu_ResourceCpu_2); // 查询CPU2 当前的频率
-
-        sriHz = IfxScuCcu_getSriFrequency(); // 查询SRI总线频率
-        spbHz = IfxScuCcu_getSpbFrequency(); // 查询SPB总线频率
-        stmHz = IfxScuCcu_getStmFrequency(); // 查询STM模块频率
-        gtmHz = IfxScuCcu_getGtmFrequency(); // GTM 系统输入时钟，尚未经过 Cluster/CMU 分频
-
-        cmuHz = IfxGtm_Cmu_getModuleFrequency(&MODULE_GTM); // CMU 输入 = Cluster 0 时钟
-        gclkHz = IfxGtm_Cmu_getGclkFrequency(&MODULE_GTM);  // CMU 全局分频后的时钟
-        // FALSE 表示不假定时钟已使能：实际未使能时可返回 0。
-        // clk0Hz 与 fxclk0Hz 分别查询两条时钟；TOM0 CH5 在本例使用后者。
-        clk0Hz = IfxGtm_Cmu_getClkFrequency(
-            &MODULE_GTM, IfxGtm_Cmu_Clk_0, FALSE);
-        fxclk0Hz = IfxGtm_Cmu_getFxClkFrequency(
-            &MODULE_GTM, IfxGtm_Cmu_Fxclk_0, FALSE);
-
-        uint32 ips200Start = IfxStm_getLower(&MODULE_STM0);
-        // 下面这个语句花费时间 2047 us时间 , 在当前测试方式情况下
-        Ips200_ShowString(0, 0, "CPU0: ");
-        // 无符号减法允许 STM 低 32 位回绕；计时包含期间发生的中断和少量读计数开销。
-        // 不要在这两次 STM 读取之间单步或设断点，否则暂停时间可能影响结果。
-        ips200StringUs = (float32)(IfxStm_getLower(&MODULE_STM0) - ips200Start)
-                         * 1000000.0f / stmHz;
-        Ips200_ShowFloat(50, 0, cpu0Hz / 1000000, 2);
-        Ips200_ShowFloat(50, 16, ips200StringUs, 2);
+        Ips200_ShowString(0, 304, "AVG ms: ");
+        Ips200_ShowFloat(64, 304, ips200StringUs / 5.0, 2);
 
     }
 }

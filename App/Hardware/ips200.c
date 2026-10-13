@@ -206,12 +206,12 @@ void Ips200_Init(void)
     }
 
     IfxQspi_SpiMaster_initModuleConfig(&config, &MODULE_QSPI2);
-    config.maximumBaudrate = 10000000.0f;
+    config.maximumBaudrate = 35000000.0f;
     config.pins = &pins; /* 默认关闭中断与 DMA */
     IfxQspi_SpiMaster_initModule(&master, &config);
     IfxQspi_SpiMaster_initChannelConfig(&channelConfig, &master);
     channelConfig.ch.channelId = IfxQspi_ChannelId_0;
-    channelConfig.ch.baudrate = 10000000.0f;
+    channelConfig.ch.baudrate = 35000000.0f;
     channelConfig.ch.mode.clockPolarity = IfxQspi_ClockPolarity_idleLow;
     channelConfig.ch.mode.shiftClock = IfxQspi_ShiftClock_shiftTransmitDataOnTrailingEdge;
     channelConfig.ch.mode.dataHeading = IfxQspi_DataHeading_msbFirst;
