@@ -41,6 +41,14 @@
 #define IFX_CFG_SCU_PLL1_FREQUENCY      (320000000) /* Allowed values are: 320000000, 160000000 */
 /* Peripheral PLL2 frequency in Hz */
 #define IFX_CFG_SCU_PLL2_FREQUENCY      (200000000) /* Allowed values are: 200000000 */
+/* 超规格 QSPI 实验：覆盖该标准配置标签的外设 PLL 参数。
+ * P=1,N=38,K2=3,K3=1,DIVBY=0：DCO=760 MHz，PLL1=253.33 MHz，PLL2=475 MHz。
+ * 系统 PLL/CPU/STM 不变；启动时一次配置，运行期间不修改 PLL。
+ */
+#define IFXSCU_CFG_PER_PLL_20MHZ_320MHZ_200MHZ {0, 37, 2, 0, 0}
+#define IFXSCU_CFG_I2CDIV_320MHZ_200MHZ 5
+#define IFXSCU_CFG_ASCLINFDIV_320MHZ_200MHZ 3
+#define IFXSCU_CFG_SPBDIV_300MHZ 2 /* 超规格 SPB=150 MHz；STM 仍为 100 MHz */
 
 /*********************************************************************************************************************/
 /*-----------------------------------Configuration for Software managed interrupt------------------------------------*/

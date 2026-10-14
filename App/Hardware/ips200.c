@@ -9,7 +9,9 @@
 #include "ips200.h"
 #include "Qspi/SpiMaster/IfxQspi_SpiMaster.h"
 #include "Stm/Std/IfxStm.h"
+#include "Dma/Dma/IfxDma_Dma.h"
 #include <stdio.h>
+#pragma GCC optimize("O2") /* 工程其余学习代码可继续使用 -Og */
 
 #define IPS200_DC_PIN  0U
 #define IPS200_RST_PIN 1U
@@ -17,6 +19,24 @@
 #define IPS200_BL_PIN  4U
 
 static uint32 spiBacon;
+static uint32 commandEcon, pixelEcon;
+static uint32 dmaDiscard;
+volatile float32 ips200SpiHz; /* iLLD 根据分频寄存器算出的实际 SCK，单位 Hz */
+volatile uint32 ips200IrqTicks; /* STM tick，用于实测中断服务时间 */
+typedef enum { FillJob, ImageJob, TextJob, LineJob } JobType;
+typedef struct {
+    JobType type;
+    uint16 x, y, width, height, color, background;
+    union { const uint16 *image; char text[31]; } data;
+} DisplayJob;
+static DisplayJob jobs[64];
+static volatile uint8 head, tail;
+static const uint16 *pixels;
+static uint32 remaining;
+static uint16 glyph[8 * 16];
+static uint8 characterIndex;
+static sint32 lineDx, lineDy, lineError;
+static boolean lineDone;
 static uint16 penColor = IPS200_WHITE;
 static uint16 backgroundColor = IPS200_BLACK;
 
@@ -143,6 +163,36 @@ static void writeWord(uint16 data)
     writeByte((uint8)data);
 }
 
+/* TX 每请求搬运两帧，RX 逐帧排空；最后一帧单独使用 LAST=1。 */
+static void startChunk(void)
+{
+    Ifx_QSPI_BACON bacon;
+    bacon.U = spiBacon;
+    bacon.B.DL = 15;
+    uint32 chunk = remaining == 1U ? 1U : __minu(remaining - 1U, 16382U);
+    if (chunk > 1U) chunk &= ~1U;
+    if (remaining == 1U)
+        IfxQspi_writeBasicConfigurationEndStream(&MODULE_QSPI2, bacon.U);
+    IfxQspi_setTransmitFifoInterrruptThreshold(&MODULE_QSPI2,
+        chunk > 1U ? IfxQspi_TxFifoInt_2 : IfxQspi_TxFifoInt_1);
+    IfxDma_setChannelBlockMode(&MODULE_DMA, IfxDma_ChannelId_0,
+        chunk > 1U ? IfxDma_ChannelMove_2 : IfxDma_ChannelMove_1);
+    IfxSrc_clearRequest(IfxQspi_getTransmitSrc(&MODULE_QSPI2));
+    IfxSrc_clearRequest(IfxQspi_getReceiveSrc(&MODULE_QSPI2));
+    IfxDma_setChannelSourceAddress(&MODULE_DMA, IfxDma_ChannelId_0,
+        (void *)IFXCPU_GLB_ADDR_DSPR(0, pixels ? pixels : &jobs[tail].color));
+    IfxDma_setChannelTransferCount(&MODULE_DMA, IfxDma_ChannelId_0, chunk > 1U ? chunk / 2U : 1U);
+    IfxDma_setChannelTransferCount(&MODULE_DMA, IfxDma_ChannelId_1, chunk);
+    IfxDma_clearChannelInterrupt(&MODULE_DMA, IfxDma_ChannelId_0);
+    IfxDma_clearChannelInterrupt(&MODULE_DMA, IfxDma_ChannelId_1);
+    if (pixels) pixels += chunk;
+    remaining -= chunk;
+    __dsync();
+    IfxDma_enableChannelTransaction(&MODULE_DMA, IfxDma_ChannelId_1);
+    IfxDma_enableChannelTransaction(&MODULE_DMA, IfxDma_ChannelId_0);
+    IfxSrc_setRequest(IfxQspi_getTransmitSrc(&MODULE_QSPI2));
+}
+
 /* 开始一个连续像素窗口，调用方在发送完像素后释放 CS。 */
 static void beginWindow(uint16 x, uint16 y, uint16 width, uint16 height)
 {
@@ -156,6 +206,126 @@ static void beginWindow(uint16 x, uint16 y, uint16 width, uint16 height)
     writeCommand(0x2C);
 }
 
+static void startArea(void)
+{
+    DisplayJob *job = &jobs[tail];
+    uint16 width = job->width, height = job->height;
+    uint16 x = job->x, y = job->y;
+    pixels = NULL_PTR;
+    if (job->type == ImageJob) pixels = job->data.image;
+    if (job->type == LineJob)
+    {
+        uint16 endX = x, endY = y;
+        while (1)
+        {
+            if (job->x == job->width && job->y == job->height)
+            {
+                lineDone = TRUE;
+                break;
+            }
+            sint32 twiceError = 2 * lineError;
+            if (twiceError >= lineDy)
+            {
+                lineError += lineDy;
+                job->x += job->x < job->width ? 1 : -1;
+            }
+            if (twiceError <= lineDx)
+            {
+                lineError += lineDx;
+                job->y += job->y < job->height ? 1 : -1;
+            }
+            if (lineDx >= -lineDy ? job->y != y : job->x != x) break;
+            endX = job->x;
+            endY = job->y;
+        }
+        width = (endX > x ? endX - x : x - endX) + 1U;
+        height = (endY > y ? endY - y : y - endY) + 1U;
+        if (endX < x) x = endX;
+        if (endY < y) y = endY;
+    }
+    if (job->type == TextJob)
+    {
+        uint8 ch = (uint8)job->data.text[characterIndex] - 32U;
+        for (uint8 row = 0; row < 16U; ++row)
+            for (uint8 column = 0; column < 8U; ++column)
+                glyph[row * 8U + column] = (font8x16[ch][column + (row / 8U) * 8U]
+                    & (1U << (row % 8U))) ? job->color : job->background;
+        pixels = glyph;
+        width = 8;
+        height = 16;
+    }
+    beginWindow(x, y, width, height);
+    MODULE_QSPI2.ECON[0].U = pixelEcon;
+    MODULE_DMA.CH[0].ADICR.B.SCBE = pixels == NULL_PTR;
+    remaining = (uint32)width * height;
+    if (remaining > 1U)
+    {
+        Ifx_QSPI_BACON bacon;
+        bacon.U = spiBacon;
+        bacon.B.DL = 15;
+        IfxQspi_writeBasicConfigurationBeginStream(&MODULE_QSPI2, bacon.U);
+    }
+    MODULE_QSPI2.GLOBALCON1.B.TXEN = 1;
+    MODULE_QSPI2.GLOBALCON1.B.RXEN = 1;
+    startChunk();
+}
+
+static void startJob(void)
+{
+    DisplayJob *job = &jobs[tail];
+    characterIndex = 0;
+    lineDx = job->width > job->x ? job->width - job->x : job->x - job->width;
+    lineDy = job->height > job->y ? job->y - job->height : job->height - job->y;
+    lineError = lineDx + lineDy;
+    lineDone = FALSE;
+    startArea();
+}
+
+/* CPU0 单生产者，中断单消费者；先填任务再发布，临界区只启动首个窗口。 */
+static void publishJob(void)
+{
+    boolean enabled = IfxCpu_disableInterrupts();
+    boolean idle = head == tail;
+    __dsync();
+    head = (head + 1U) & 63U;
+    if (idle) startJob();
+    IfxCpu_restoreInterrupts(enabled);
+}
+
+IFX_INTERRUPT(Ips200_DmaRxIsr, 0, 40)
+{
+    uint32 started = IfxStm_getLower(&MODULE_STM0);
+    IfxDma_clearChannelInterrupt(&MODULE_DMA, IfxDma_ChannelId_1);
+    if (remaining != 0U) startChunk();
+    else
+    {
+        /* RX 完成后仅等待末帧尾沿；不在 ISR 等待整块传输。 */
+        while (IfxQspi_getPhase(&MODULE_QSPI2) != IfxQspi_Phase_wait) {}
+        MODULE_QSPI2.GLOBALCON1.B.TXEN = 0;
+        MODULE_QSPI2.GLOBALCON1.B.RXEN = 0;
+        MODULE_QSPI2.ECON[0].U = commandEcon;
+        IfxPort_setPinHigh(&MODULE_P15, IPS200_CS_PIN);
+        DisplayJob *job = &jobs[tail];
+        if (job->type == TextJob && job->data.text[++characterIndex] != '\0')
+        {
+            job->x += 8U;
+            startArea();
+        }
+        else if (job->type == LineJob && !lineDone) startArea();
+        else
+        {
+            tail = (tail + 1U) & 63U;
+            if (head != tail) startJob();
+        }
+    }
+    ips200IrqTicks += (uint32)(IfxStm_getLower(&MODULE_STM0) - started);
+}
+
+boolean Ips200_IsBusy(void)
+{
+    return head != tail;
+}
+
 void Ips200_Init(void)
 {
     const IfxQspi_SpiMaster_Pins pins = {
@@ -164,7 +334,7 @@ void Ips200_Init(void)
         .mtsr = &IfxQspi2_MTSR_P15_5_OUT,
         .mtsrMode = IfxPort_OutputMode_pushPull,
         .mrst = NULL_PTR,
-        .pinDriver = IfxPort_PadDriver_cmosAutomotiveSpeed3
+        .pinDriver = IfxPort_PadDriver_cmosAutomotiveSpeed1
     };
     IfxQspi_SpiMaster master;
     IfxQspi_SpiMaster_Channel channel = {0};
@@ -202,22 +372,71 @@ void Ips200_Init(void)
         if (pin == 3U) continue; /* P15.3 留给 QSPI SCK */
         IfxPort_setPinModeOutput(&MODULE_P15, pin, IfxPort_OutputMode_pushPull,
                                 IfxPort_OutputIdx_general);
-        IfxPort_setPinPadDriver(&MODULE_P15, pin, IfxPort_PadDriver_cmosAutomotiveSpeed3);
+        IfxPort_setPinPadDriver(&MODULE_P15, pin, IfxPort_PadDriver_cmosAutomotiveSpeed1);
     }
 
     IfxQspi_SpiMaster_initModuleConfig(&config, &MODULE_QSPI2);
-    config.maximumBaudrate = 35000000.0f;
+    config.maximumBaudrate = 150000000.0f; /* 保持 GLOBALCON.TQ=0，命令单独分频 */
     config.pins = &pins; /* 默认关闭中断与 DMA */
     IfxQspi_SpiMaster_initModule(&master, &config);
+    MODULE_QSPI2.GLOBALCON.B.EXPECT = IfxQspi_ExpectTimeout_131072; /* 容许块间中断服务暂停 */
     IfxQspi_SpiMaster_initChannelConfig(&channelConfig, &master);
     channelConfig.ch.channelId = IfxQspi_ChannelId_0;
-    channelConfig.ch.baudrate = 35000000.0f;
+    channelConfig.ch.baudrate = 50000000.0f;
     channelConfig.ch.mode.clockPolarity = IfxQspi_ClockPolarity_idleLow;
     channelConfig.ch.mode.shiftClock = IfxQspi_ShiftClock_shiftTransmitDataOnTrailingEdge;
     channelConfig.ch.mode.dataHeading = IfxQspi_DataHeading_msbFirst;
     channelConfig.ch.mode.dataWidth = 8;
     IfxQspi_SpiMaster_initChannel(&channel, &channelConfig);
     spiBacon = channel.bacon.U;
+    commandEcon = MODULE_QSPI2.ECON[0].U;
+    /* 实验性像素分频：fQSPI=475 MHz 时 /4=118.75 MHz，超规格。
+     * 只在 DMA 像素块期间使用，命令与初始化恢复官方 50 MHz 配置。
+     */
+    Ifx_QSPI_ECON fastEcon;
+    fastEcon.U = commandEcon;
+    fastEcon.B.Q = 0;
+    fastEcon.B.A = 1;
+    fastEcon.B.B = 2;
+    fastEcon.B.C = 0;
+    pixelEcon = fastEcon.U;
+    MODULE_QSPI2.ECON[0].U = pixelEcon;
+    ips200SpiHz = IfxQspi_calcRealBaudrate(&MODULE_QSPI2, IfxQspi_ChannelId_0);
+    MODULE_QSPI2.ECON[0].U = commandEcon;
+
+    IfxDma_Dma dma;
+    IfxDma_Dma_Config dmaConfig;
+    IfxDma_Dma_Channel dmaChannel;
+    IfxDma_Dma_ChannelConfig dmaChannelConfig;
+    IfxDma_Dma_initModuleConfig(&dmaConfig, &MODULE_DMA);
+    IfxDma_Dma_initModule(&dma, &dmaConfig);
+    IfxDma_Dma_initChannelConfig(&dmaChannelConfig, &dma);
+    dmaChannelConfig.channelId = IfxDma_ChannelId_0;
+    dmaChannelConfig.destinationAddress = (uint32)&MODULE_QSPI2.DATAENTRY[0].U;
+    dmaChannelConfig.destinationCircularBufferEnabled = TRUE;
+    dmaChannelConfig.destinationAddressCircularRange = IfxDma_ChannelIncrementCircular_none;
+    dmaChannelConfig.sourceAddressCircularRange = IfxDma_ChannelIncrementCircular_none;
+    dmaChannelConfig.requestMode = IfxDma_ChannelRequestMode_oneTransferPerRequest;
+    dmaChannelConfig.operationMode = IfxDma_ChannelOperationMode_single;
+    dmaChannelConfig.hardwareRequestEnabled = FALSE;
+    dmaChannelConfig.channelInterruptEnabled = FALSE;
+    dmaChannelConfig.moveSize = IfxDma_ChannelMoveSize_16bit;
+    IfxDma_Dma_initChannel(&dmaChannel, &dmaChannelConfig);
+    dmaChannelConfig.channelId = IfxDma_ChannelId_1;
+    dmaChannelConfig.sourceAddress = (uint32)&MODULE_QSPI2.RXEXIT.U;
+    dmaChannelConfig.sourceCircularBufferEnabled = TRUE;
+    dmaChannelConfig.sourceAddressCircularRange = IfxDma_ChannelIncrementCircular_none;
+    dmaChannelConfig.destinationAddress = IFXCPU_GLB_ADDR_DSPR(IfxCpu_getCoreId(), &dmaDiscard);
+    dmaChannelConfig.moveSize = IfxDma_ChannelMoveSize_32bit;
+    dmaChannelConfig.channelInterruptEnabled = TRUE;
+    dmaChannelConfig.channelInterruptPriority = 40;
+    dmaChannelConfig.channelInterruptTypeOfService = IfxSrc_Tos_cpu0;
+    dmaChannelConfig.busPriority = IfxDma_ChannelBusPriority_high;
+    IfxDma_Dma_initChannel(&dmaChannel, &dmaChannelConfig);
+    IfxSrc_init(IfxQspi_getTransmitSrc(&MODULE_QSPI2), IfxSrc_Tos_dma, 0);
+    IfxSrc_enable(IfxQspi_getTransmitSrc(&MODULE_QSPI2));
+    IfxSrc_init(IfxQspi_getReceiveSrc(&MODULE_QSPI2), IfxSrc_Tos_dma, 1);
+    IfxSrc_enable(IfxQspi_getReceiveSrc(&MODULE_QSPI2));
 
     IfxStm_waitTicks(&MODULE_STM0, IfxStm_getTicksFromMilliseconds(&MODULE_STM0, 5));
     IfxPort_setPinHigh(&MODULE_P15, IPS200_RST_PIN);
@@ -236,6 +455,8 @@ void Ips200_Init(void)
     IfxPort_setPinHigh(&MODULE_P15, IPS200_CS_PIN);
     Ips200_SetColor(IPS200_WHITE, IPS200_BLACK);
     Ips200_Clear();
+    while (Ips200_IsBusy()) {} /* 仅初始化等待黑屏，随后所有绘图异步返回 */
+    IfxQspi_clearAllEventFlags(&MODULE_QSPI2); /* 清除上电复位等待期间的历史标志 */
     IfxPort_setPinHigh(&MODULE_P15, IPS200_BL_PIN);
 }
 
@@ -262,35 +483,26 @@ void Ips200_DrawPoint(uint16 x, uint16 y, uint16 color)
 
 void Ips200_FillRect(uint16 x, uint16 y, uint16 width, uint16 height, uint16 color)
 {
-    beginWindow(x, y, width, height);
-    for (uint32 count = (uint32)width * height; count > 0U; --count)
-        writeWord(color);
-    IfxPort_setPinHigh(&MODULE_P15, IPS200_CS_PIN);
+    jobs[head] = (DisplayJob){.type = FillJob, .x = x, .y = y,
+        .width = width, .height = height, .color = color};
+    publishJob();
 }
 
 void Ips200_DrawLine(uint16 x0, uint16 y0, uint16 x1, uint16 y1, uint16 color)
 {
-    /* Bresenham：使用有符号运算，支持所有斜率与反向端点。 */
-    sint32 x = x0, y = y0;
-    sint32 dx = x1 > x0 ? x1 - x0 : x0 - x1;
-    sint32 dy = y1 > y0 ? y0 - y1 : y1 - y0;
-    sint32 error = dx + dy;
-    while (1)
+    if (y0 == y1)
     {
-        Ips200_DrawPoint((uint16)x, (uint16)y, color);
-        if (x == x1 && y == y1) break;
-        sint32 twiceError = 2 * error;
-        if (twiceError >= dy)
-        {
-            error += dy;
-            x += x0 < x1 ? 1 : -1;
-        }
-        if (twiceError <= dx)
-        {
-            error += dx;
-            y += y0 < y1 ? 1 : -1;
-        }
+        Ips200_FillRect(x0 < x1 ? x0 : x1, y0, (x0 < x1 ? x1 - x0 : x0 - x1) + 1U, 1, color);
+        return;
     }
+    if (x0 == x1)
+    {
+        Ips200_FillRect(x0, y0 < y1 ? y0 : y1, 1, (y0 < y1 ? y1 - y0 : y0 - y1) + 1U, color);
+        return;
+    }
+    jobs[head] = (DisplayJob){.type = LineJob, .x = x0, .y = y0,
+        .width = x1, .height = y1, .color = color};
+    publishJob();
 }
 
 void Ips200_DrawRect(uint16 x, uint16 y, uint16 width, uint16 height, uint16 color)
@@ -303,18 +515,22 @@ void Ips200_DrawRect(uint16 x, uint16 y, uint16 width, uint16 height, uint16 col
 
 void Ips200_ShowChar(uint16 x, uint16 y, char character)
 {
-    beginWindow(x, y, 8, 16);
-    for (uint8 row = 0; row < 16U; ++row)
-        for (uint8 column = 0; column < 8U; ++column)
-            writeWord((font8x16[(uint8)character - 32U][column + (row / 8U) * 8U]
-                       & (1U << (row % 8U))) ? penColor : backgroundColor);
-    IfxPort_setPinHigh(&MODULE_P15, IPS200_CS_PIN);
+    char text[2] = {character, '\0'};
+    Ips200_ShowString(x, y, text);
 }
 
 void Ips200_ShowString(uint16 x, uint16 y, const char *text)
 {
-    for (; *text != '\0'; ++text, x += 8U)
-        Ips200_ShowChar(x, y, *text);
+    if (*text == '\0') return;
+    DisplayJob *job = &jobs[head];
+    *job = (DisplayJob){.type = TextJob, .x = x, .y = y,
+        .color = penColor, .background = backgroundColor};
+    for (uint8 i = 0; ; ++i)
+    {
+        job->data.text[i] = text[i];
+        if (text[i] == '\0') break;
+    }
+    publishJob();
 }
 
 void Ips200_ShowInt(uint16 x, uint16 y, sint32 value)
@@ -342,8 +558,7 @@ void Ips200_ShowFloat(uint16 x, uint16 y, float64 value, uint8 decimals)
 void Ips200_ShowRgb565Image(uint16 x, uint16 y, const uint16 *image,
                            uint16 width, uint16 height)
 {
-    beginWindow(x, y, width, height);
-    for (uint32 count = (uint32)width * height; count > 0U; --count)
-        writeWord(*image++);
-    IfxPort_setPinHigh(&MODULE_P15, IPS200_CS_PIN);
+    jobs[head] = (DisplayJob){.type = ImageJob, .x = x, .y = y,
+        .width = width, .height = height, .data.image = image};
+    publishJob();
 }

@@ -8,7 +8,6 @@
 #include "App/Hardware/Key.h"
 #include "App/Hardware/ips200.h"
 
-
 #include "IfxGtm_Tom_Pwm.h" // GTM TOM PWM 驱动
 #include "IfxStm_Timer.h"   // STM 周期中断驱动
 
@@ -17,8 +16,8 @@
  * SCU 的 CCU 管理系统时钟，与捕获比较定时器 CCU6 不是同一个模块。
  * XTAL 是外部晶振；PLL = Phase-Locked Loop，锁相环，用参考时钟生成更高频率。
  * 本工程 Configurations/Ifx_Cfg.h：XTAL 20 MHz，系统 PLL 300 MHz，
- * 外设 PLL 两路输出分别为 320 MHz、200 MHz；启动代码在 core0_main 前初始化时钟。
- * 当前默认分频目标：CPU0/1/2 与 SRI 300 MHz，SPB 与 STM 100 MHz，GTM 200 MHz。
+ * 当前屏幕实验覆盖外设 PLL 为 253.33 MHz、475 MHz，启动时一次初始化。
+ * CPU0/1/2 与 SRI 300 MHz，STM 100 MHz；实验 SPB 150 MHz，GTM 因此为 300 MHz。
  * 这些是配置目标，最终应查询运行时寄存器；分频字段的编码不一定等于数学分母。
  * 查询函数根据寄存器和工程填写的晶振频率计算结果，不是物理频率测量仪。
  *
@@ -34,8 +33,10 @@
 
 // float32 为 32 位浮点数；volatile 要求编译器保留对变量的实际访问，便于观察。
 // volatile 不会自动刷新调试窗口，也不保证多核同步；全局变量可加入 Expressions。
-volatile float32 cpu0Hz, cpu1Hz, cpu2Hz; // 各 CPU 核时钟；主频不等于每秒执行指令数
-volatile float32 ips200StringUs; // 100 轮完整 IPS200 测试的平均耗时，单位 us
+volatile float32 cpu0Hz, cpu1Hz, cpu2Hz;      // 各 CPU 核时钟；主频不等于每秒执行指令数
+volatile float32 ips200StringUs;              // 5 轮完整 IPS200 测试的平均耗时，单位 us
+volatile float32 ips200SubmitUs, ips200CpuUs; // 后者为服务时间近似值，不含 ISR 入口/出口
+volatile uint32 ips200BackgroundCount;        // DMA 传输期间主循环能继续执行的工作次数
 // SRI = Shared Resource Interconnect，共享资源互连，连接 CPU、存储器等高带宽资源。
 // SPB = System Peripheral Bus，系统外设总线，用于外设寄存器访问等。
 // STM = System Timer，系统定时器；GTM = Generic Timer Module，通用定时器模块。
@@ -163,6 +164,7 @@ void core0_main(void)
     // Gtm_Pwm_Init();
     // Stm_Timer_Init();
     // 先初始化 PWM，再启动 STM，保证首次中断访问的是已初始化的驱动。
+    // 实验外设 PLL 参数在 Ifx_Cfg.h 中于启动时配置。
     Ips200_Init();
     Ips200_Clear();
     // 测试图像提前生成，图像生成耗时不计入屏幕接口测试。
@@ -171,50 +173,77 @@ void core0_main(void)
         for (uint16 x = 0; x < 64; ++x)
             testImage[y * 64 + x] = ((x >> 1) << 11) | (y << 5) | ((x + y) >> 2);
     stmHz = IfxStm_getFrequency(&MODULE_STM0);
+    cpu0Hz = IfxScuCcu_getCpuFrequency(IfxCpu_ResourceCpu_0);
+    spbHz = IfxScuCcu_getSpbFrequency();
+    sriHz = IfxScuCcu_getSriFrequency();
     uint64 ips200Ticks = 0;
+    uint64 submitTicks = 0, cpuTicks = 0;
+    uint32 ips200Start = 0, irqStart = 0;
+    uint8 rounds = 0;
     // 每轮单独计时，再累加；整批测试可能跨越多次 STM 低 32 位回绕。
-    for (int i = 0; i < 5; i++)
-    {
-        uint32 ips200Start = IfxStm_getLower(&MODULE_STM0);
-        Ips200_SetColor(IPS200_WHITE, IPS200_BLACK);
-        Ips200_Clear();
-        // 全屏基本颜色测试，最后回到黑色以显示后续图形。
-        Ips200_Fill(IPS200_RED);
-        Ips200_Fill(IPS200_GREEN);
-        Ips200_Fill(IPS200_BLUE);
-        Ips200_Fill(IPS200_YELLOW);
-        Ips200_Fill(IPS200_CYAN);
-        Ips200_Fill(IPS200_MAGENTA);
-        Ips200_Fill(IPS200_WHITE);
-        Ips200_Fill(IPS200_BLACK);
-
-        Ips200_DrawPoint(0, 0, IPS200_RED);
-        Ips200_DrawPoint(239, 0, IPS200_GREEN);
-        Ips200_DrawPoint(0, 319, IPS200_BLUE);
-        Ips200_DrawPoint(239, 319, IPS200_WHITE);
-        Ips200_DrawLine(8, 96, 231, 96, IPS200_YELLOW);   // 水平
-        Ips200_DrawLine(8, 100, 8, 190, IPS200_CYAN);     // 垂直
-        Ips200_DrawLine(16, 112, 104, 184, IPS200_RED);   // 正斜率
-        Ips200_DrawLine(104, 112, 16, 184, IPS200_BLUE);  // 反向、负斜率
-        Ips200_DrawLine(48, 112, 64, 184, IPS200_MAGENTA); // 陡斜率
-        Ips200_DrawLine(104, 148, 16, 160, IPS200_CYAN);  // 缓斜率
-        Ips200_DrawRect(120, 112, 104, 80, IPS200_WHITE);
-        Ips200_FillRect(136, 128, 72, 48, IPS200_GREEN);
-
-        Ips200_ShowChar(8, 8, 'A');
-        Ips200_ShowString(24, 8, "IPS200 RGB565 TEST");
-        Ips200_ShowInt(8, 32, -2147483647 - 1);
-        Ips200_ShowUint(8, 48, 4294967295U);
-        Ips200_ShowFloat(8, 64, -123.456789, 6);
-        Ips200_ShowRgb565Image(16, 216, testImage, 64, 64);
-        ips200Ticks += (uint32)(IfxStm_getLower(&MODULE_STM0) - ips200Start);
-    }
-    // 包含发生的中断和少量读计数开销；不要在计时区间单步或设断点。
-    ips200StringUs = (float32)((float64)ips200Ticks * 1000000.0 / stmHz / 100.0);
     while (1)
     {
-        Ips200_ShowString(0, 304, "AVG ms: ");
-        Ips200_ShowFloat(64, 304, ips200StringUs / 5.0, 2);
+        if (!Ips200_IsBusy())
+        {
+            if (ips200Start != 0U)
+            {
+                ips200Ticks += (uint32)(IfxStm_getLower(&MODULE_STM0) - ips200Start);
+                cpuTicks += (uint32)(ips200IrqTicks - irqStart);
+                ips200Start = 0;
+            }
+            if (rounds < 5U)
+            {
+                ips200Start = IfxStm_getLower(&MODULE_STM0);
+                irqStart = ips200IrqTicks;
+                Ips200_SetColor(IPS200_WHITE, IPS200_BLACK);
+                Ips200_Clear();
+                // 全屏基本颜色测试，最后回到黑色以显示后续图形。
+                Ips200_Fill(IPS200_RED);
+                Ips200_Fill(IPS200_GREEN);
+                Ips200_Fill(IPS200_BLUE);
+                Ips200_Fill(IPS200_YELLOW);
+                Ips200_Fill(IPS200_CYAN);
+                Ips200_Fill(IPS200_MAGENTA);
+                Ips200_Fill(IPS200_WHITE);
+                Ips200_Fill(IPS200_BLACK);
+                Ips200_DrawPoint(0, 0, IPS200_RED);
+                Ips200_DrawPoint(239, 0, IPS200_GREEN);
+                Ips200_DrawPoint(0, 319, IPS200_BLUE);
+                Ips200_DrawPoint(239, 319, IPS200_WHITE);
+                Ips200_DrawLine(8, 96, 231, 96, IPS200_YELLOW); // 水平
+                Ips200_DrawLine(8, 100, 8, 190, IPS200_CYAN); // 垂直
+                Ips200_DrawLine(16, 112, 104, 184, IPS200_RED); // 正斜率
+                Ips200_DrawLine(104, 112, 16, 184, IPS200_BLUE); // 反向、负斜率
+                Ips200_DrawLine(48, 112, 64, 184, IPS200_MAGENTA); // 陡斜率
+                Ips200_DrawLine(104, 148, 16, 160, IPS200_CYAN); // 缓斜率
+                Ips200_DrawRect(120, 112, 104, 80, IPS200_WHITE);
+                Ips200_FillRect(136, 128, 72, 48, IPS200_GREEN);
 
+                Ips200_ShowChar(8, 8, 'A');
+                Ips200_ShowString(24, 8, "IPS200 RGB565 TEST");
+                Ips200_ShowInt(8, 32, -2147483647 - 1);
+                Ips200_ShowUint(8, 48, 4294967295U);
+                Ips200_ShowFloat(8, 64, -123.456789, 6);
+                Ips200_ShowRgb565Image(16, 216, testImage, 64, 64);
+                uint32 submitted = (uint32)(IfxStm_getLower(&MODULE_STM0) - ips200Start);
+                uint32 submitIrqs = (uint32)(ips200IrqTicks - irqStart);
+                submitTicks += submitted;
+                cpuTicks += submitted - submitIrqs;
+                ++rounds;
+            }
+            else if (rounds == 5U)
+            {
+                // 全部像素完成后才计算，不把入队返回时间当作刷新完成时间。
+                ips200StringUs = (float32)((float64)ips200Ticks * 1000000.0 / stmHz / 5.0);
+                ips200SubmitUs = (float32)((float64)submitTicks * 1000000.0 / stmHz / 5.0);
+                ips200CpuUs = (float32)((float64)cpuTicks * 1000000.0 / stmHz / 5.0);
+                Ips200_ShowString(0, 304, "AVG ms: ");
+                Ips200_ShowFloat(64, 304, ips200StringUs / 1000.0, 2);
+                ++rounds;
+            }
+        }
+        // 此处始终能执行控制/采样等其他工作，无 DMA 等待循环，无需 Service。
+        if (rounds <= 5U)
+            ++ips200BackgroundCount;
     }
 }

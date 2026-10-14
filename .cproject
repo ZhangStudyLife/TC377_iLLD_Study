@@ -32,6 +32,7 @@
 									<listOptionValue builtIn="false" value="../App"/>
 									<listOptionValue builtIn="false" value="../App/Hardware"/>
 									<listOptionValue builtIn="false" value="../Configurations"/>
+									<listOptionValue builtIn="false" value=""/>
 									<listOptionValue builtIn="false" value="../Libraries"/>
 									<listOptionValue builtIn="false" value="../Libraries/Infra"/>
 									<listOptionValue builtIn="false" value="../Libraries/Infra/Platform"/>
