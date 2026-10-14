@@ -348,6 +348,8 @@ void Platform_Step(void)
     if ((uint32)(now - last) >= (uint32)(IfxStm_getFrequency(&MODULE_STM0) / 1000.0F))
     {
         last = now;
+        /* DAS 重连会暂停 WDT；测试程序运行时恢复计时。 */
+        if (MODULE_CBS.OSTATE.B.OEN && !MODULE_CBS.OSTATE.B.WDTSUS) MODULE_CBS.OCNTRL.U = 0x3000;
         if (faultCommand != 4 && stressLoops[0] != progress[0] && stressLoops[1] != progress[1] && stressLoops[2] != progress[2])
         {
             for (uint32 i = 0; i < 3; ++i) progress[i] = stressLoops[i];

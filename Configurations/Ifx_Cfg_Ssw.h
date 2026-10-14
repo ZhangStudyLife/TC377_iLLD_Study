@@ -189,6 +189,9 @@ extern void Ifx_Ssw_Monbist(void);
 
 #define IFX_CFG_SSW_CALLOUT_PLL_INIT()                          \
     {                                                           \
+        /* 系统复位后先停止启动 WDT，避免 PLL 等待期间再次超时。 */ \
+        IfxScuWdt_disableCpuWatchdog(IfxScuWdt_getCpuWatchdogPassword()); \
+        IfxScuWdt_disableSafetyWatchdog(IfxScuWdt_getSafetyWatchdogPassword()); \
         /* 超频前增加 Flash 等待周期，保留其它位。 */           \
         uint16 password = IfxScuWdt_getCpuWatchdogPassword();     \
         IfxScuWdt_clearCpuEndinit(password);                     \

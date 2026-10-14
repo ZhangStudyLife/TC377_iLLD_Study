@@ -1,0 +1,30 @@
+[
+  {
+    "fault": 1,
+    "resetReason": "10010008",
+    "alarmDiagnostic": "00020400",
+    "autonomousRecovery": true,
+    "uptime": 24
+  },
+  {
+    "fault": 2,
+    "resetReason": "10010008",
+    "alarmDiagnostic": "00020800",
+    "autonomousRecovery": true,
+    "uptime": 24
+  },
+  {
+    "fault": 3,
+    "resetReason": "10010008",
+    "alarmDiagnostic": "00021000",
+    "autonomousRecovery": true,
+    "uptime": 24
+  },
+  {
+    "fault": 4,
+    "resetReason": "10010008",
+    "alarmDiagnostic": "00030000",
+    "autonomousRecovery": true,
+    "uptime": 23
+  }
+]

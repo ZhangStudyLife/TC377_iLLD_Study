@@ -1,0 +1,30 @@
+{
+  "seconds": 1274,
+  "observationSeconds": 1233,
+  "cpuLoops": [
+    39818910,
+    43179089,
+    43199274
+  ],
+  "ipcPackets": 242478643.0,
+  "pwmSamples": 17163233.0,
+  "stmInterrupts": 1274140,
+  "stmMaxLateUs": 13.391989286408572,
+  "screenFrames": 1274,
+  "canFrames": [
+    1274,
+    1274,
+    1274,
+    1274
+  ],
+  "dmaChecks": 1274,
+  "crcChecks": 1274,
+  "ccuInterrupts": 127424,
+  "gptChecks": 1273,
+  "smuInterrupts": 1274,
+  "peakTemperature": "54.4982",
+  "uartBytes": 4194304,
+  "runtimeAlarmFlags": 0,
+  "sshFlags": 0,
+  "functionalErrors": 0
+}
