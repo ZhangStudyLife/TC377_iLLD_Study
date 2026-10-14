@@ -37,18 +37,38 @@
 /* System PLL frequency in Hz */
 #define IFX_CFG_SCU_PLL_FREQUENCY       (300000000) /* Allowed values are: 300000000, 240000000, 200000000, 160000000, 
                                                      * 133000000 or 80000000 */
+/* 仅提供标准 300 MHz 与 DIY 500 MHz 两档。改此值或编译时 -DTC377_CPU_MHZ=300。 */
+#ifndef TC377_CPU_MHZ
+#define TC377_CPU_MHZ 500
+#endif
+#if TC377_CPU_MHZ == 500
+/* 300 MHz 是 iLLD 配置标签；20 MHz * 50 / 2 实际为 500 MHz。 */
+#define IFXSCU_CFG_SYS_PLL_20MHZ_300MHZ {0, 49, 7}
+#define IFXSCU_CFG_PLL_STEPS_20MHZ_300MHZ {3, 0.001F}, {2, 0.001F}, {1, 0.001F}
+#define IFXSCU_CFG_SPBDIV_300MHZ 4 /* SPB=125 MHz */
+#define IFXSCU_CFG_STMDIV_300MHZ 8 /* STM=62.5 MHz，SPB/STM=2 */
+#define IFXSCU_CFG_BBBDIV_300MHZ 2 /* BBB=250 MHz，SRI/BBB=2 */
+#define IFXSCU_CFG_FSIDIV_300MHZ 2 /* FSI=250 MHz，FSI/(SPB/2)=4 */
+#define IFXSCU_CFG_GTMDIV_300MHZ 4 /* GTM=125 MHz，GTM/SPB=1 */
+#define IFXSCU_CFG_MCANHDIV_300MHZ 4 /* MCANH=SPB=125 MHz */
+#define IFXSCU_CFG_GETHDIV_300MHZ 4 /* GETH=125 MHz */
+#define TC377_FLASH_RFLASH 15
+#define TC377_FLASH_RECC 3
+#define TC377_DFLASH_RFLASH 24
+#define TC377_DFLASH_RECC 4
+#elif TC377_CPU_MHZ == 300
+#define TC377_FLASH_RFLASH 8
+#define TC377_FLASH_RECC 2
+#define TC377_DFLASH_RFLASH 9
+#define TC377_DFLASH_RECC 1
+#else
+#error "TC377_CPU_MHZ must be 300 or 500"
+#endif
 /* Peripheral PLL1 frequency in Hz */
 #define IFX_CFG_SCU_PLL1_FREQUENCY      (320000000) /* Allowed values are: 320000000, 160000000 */
 /* Peripheral PLL2 frequency in Hz */
 #define IFX_CFG_SCU_PLL2_FREQUENCY      (200000000) /* Allowed values are: 200000000 */
-/* 超规格 QSPI 实验：覆盖该标准配置标签的外设 PLL 参数。
- * P=1,N=38,K2=3,K3=1,DIVBY=0：DCO=760 MHz，PLL1=253.33 MHz，PLL2=475 MHz。
- * 系统 PLL/CPU/STM 不变；启动时一次配置，运行期间不修改 PLL。
- */
-#define IFXSCU_CFG_PER_PLL_20MHZ_320MHZ_200MHZ {0, 37, 2, 0, 0}
-#define IFXSCU_CFG_I2CDIV_320MHZ_200MHZ 5
-#define IFXSCU_CFG_ASCLINFDIV_320MHZ_200MHZ 3
-#define IFXSCU_CFG_SPBDIV_300MHZ 2 /* 超规格 SPB=150 MHz；STM 仍为 100 MHz */
+/* 两档共用标准外设 PLL：PLL1=320 MHz，PLL2=200 MHz。 */
 
 /*********************************************************************************************************************/
 /*-----------------------------------Configuration for Software managed interrupt------------------------------------*/

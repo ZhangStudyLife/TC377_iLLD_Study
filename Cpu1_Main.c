@@ -28,6 +28,8 @@
 #include "IfxCpu.h"
 #include "IfxScuWdt.h"
 #include "Ifx_Cfg_Ssw.h"
+#include "App/Hardware/overclock_test.h"
+#include "App/Hardware/platform_test.h"
 
 extern IfxCpu_syncEvent g_cpuSyncEvent;
 
@@ -40,11 +42,17 @@ void core1_main(void)
      */
     IfxScuWdt_disableCpuWatchdog(IfxScuWdt_getCpuWatchdogPassword());
     
+    IfxCpu_setProgramCache(FALSE);
     /* Wait for CPU sync event */
     IfxCpu_emitEvent(&g_cpuSyncEvent);
-    IfxCpu_waitEvent(&g_cpuSyncEvent, 1);
+    while (IfxCpu_waitEvent(&g_cpuSyncEvent, 1)) {}
+    IfxCpu_invalidateProgramCache();
+    IfxCpu_setProgramCache(TRUE);
+    Platform_CoreInit(1);
     
     while(1)
     {
+        Overclock_Stress(1);
+        Platform_CoreStep(1);
     }
 }

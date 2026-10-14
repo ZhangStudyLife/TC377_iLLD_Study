@@ -1,0 +1,27 @@
+{
+  "seconds": 1237,
+  "cpuLoops": [
+    39865189,
+    42511801,
+    42511510
+  ],
+  "ipcPackets": 231361727.0,
+  "pwmSamples": 17153141.0,
+  "stmInterrupts": 1237955,
+  "stmMaxLateUs": 13.072,
+  "screenFrames": 1237,
+  "canFrames": [
+    1238,
+    1238,
+    1238,
+    1238
+  ],
+  "dmaChecks": 1238,
+  "crcChecks": 1238,
+  "gptChecks": 1237,
+  "ccuInterrupts": 123795,
+  "smuInterrupts": 1237,
+  "peakTemperature": "55.8307",
+  "alarm7": 2147483648,
+  "uartBytes": 5242880
+}

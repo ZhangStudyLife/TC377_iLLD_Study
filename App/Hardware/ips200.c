@@ -163,7 +163,7 @@ static void writeWord(uint16 data)
     writeByte((uint8)data);
 }
 
-/* TX 每请求搬运两帧，RX 逐帧排空；最后一帧单独使用 LAST=1。 */
+/* TX/RX 每请求搬运一帧；最后一帧单独使用 LAST=1。 */
 static void startChunk(void)
 {
     Ifx_QSPI_BACON bacon;
@@ -173,15 +173,14 @@ static void startChunk(void)
     if (chunk > 1U) chunk &= ~1U;
     if (remaining == 1U)
         IfxQspi_writeBasicConfigurationEndStream(&MODULE_QSPI2, bacon.U);
-    IfxQspi_setTransmitFifoInterrruptThreshold(&MODULE_QSPI2,
-        chunk > 1U ? IfxQspi_TxFifoInt_2 : IfxQspi_TxFifoInt_1);
+    IfxQspi_setTransmitFifoInterrruptThreshold(&MODULE_QSPI2, IfxQspi_TxFifoInt_1);
     IfxDma_setChannelBlockMode(&MODULE_DMA, IfxDma_ChannelId_0,
-        chunk > 1U ? IfxDma_ChannelMove_2 : IfxDma_ChannelMove_1);
+        IfxDma_ChannelMove_1);
     IfxSrc_clearRequest(IfxQspi_getTransmitSrc(&MODULE_QSPI2));
     IfxSrc_clearRequest(IfxQspi_getReceiveSrc(&MODULE_QSPI2));
     IfxDma_setChannelSourceAddress(&MODULE_DMA, IfxDma_ChannelId_0,
         (void *)IFXCPU_GLB_ADDR_DSPR(0, pixels ? pixels : &jobs[tail].color));
-    IfxDma_setChannelTransferCount(&MODULE_DMA, IfxDma_ChannelId_0, chunk > 1U ? chunk / 2U : 1U);
+    IfxDma_setChannelTransferCount(&MODULE_DMA, IfxDma_ChannelId_0, chunk);
     IfxDma_setChannelTransferCount(&MODULE_DMA, IfxDma_ChannelId_1, chunk);
     IfxDma_clearChannelInterrupt(&MODULE_DMA, IfxDma_ChannelId_0);
     IfxDma_clearChannelInterrupt(&MODULE_DMA, IfxDma_ChannelId_1);
@@ -377,6 +376,8 @@ void Ips200_Init(void)
 
     IfxQspi_SpiMaster_initModuleConfig(&config, &MODULE_QSPI2);
     config.maximumBaudrate = 150000000.0f; /* 保持 GLOBALCON.TQ=0，命令单独分频 */
+    config.txFifoMode = IfxQspi_FifoMode_singleMove;
+    config.rxFifoMode = IfxQspi_FifoMode_singleMove;
     config.pins = &pins; /* 默认关闭中断与 DMA */
     IfxQspi_SpiMaster_initModule(&master, &config);
     MODULE_QSPI2.GLOBALCON.B.EXPECT = IfxQspi_ExpectTimeout_131072; /* 容许块间中断服务暂停 */
@@ -390,7 +391,7 @@ void Ips200_Init(void)
     IfxQspi_SpiMaster_initChannel(&channel, &channelConfig);
     spiBacon = channel.bacon.U;
     commandEcon = MODULE_QSPI2.ECON[0].U;
-    /* 实验性像素分频：fQSPI=475 MHz 时 /4=118.75 MHz，超规格。
+    /* 两个 CPU 档位共用 fQSPI=200 MHz，像素 /4=50 MHz。
      * 只在 DMA 像素块期间使用，命令与初始化恢复官方 50 MHz 配置。
      */
     Ifx_QSPI_ECON fastEcon;

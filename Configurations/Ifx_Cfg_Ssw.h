@@ -185,9 +185,18 @@ extern void Ifx_Ssw_Monbist(void);
  */
 #if IFX_CFG_SSW_ENABLE_PLL_INIT == 1U
 #include "IfxScuCcu.h"
+#include "IfxDmu_reg.h"
 
 #define IFX_CFG_SSW_CALLOUT_PLL_INIT()                          \
     {                                                           \
+        /* 超频前增加 Flash 等待周期，保留其它位。 */           \
+        uint16 password = IfxScuWdt_getCpuWatchdogPassword();     \
+        IfxScuWdt_clearCpuEndinit(password);                     \
+        DMU_HF_PWAIT.U = (DMU_HF_PWAIT.U & ~0x73FU)              \
+            | TC377_FLASH_RFLASH | (TC377_FLASH_RECC << 8);      \
+        DMU_HF_DWAIT.U = (DMU_HF_DWAIT.U & ~0x700FFU)            \
+            | TC377_DFLASH_RFLASH | (TC377_DFLASH_RECC << 16);    \
+        IfxScuWdt_setCpuEndinit(password);                       \
         if (IfxScuCcu_init(&IfxScuCcu_defaultClockConfig) == 1) \
         {                                                       \
             __debug();                                          \

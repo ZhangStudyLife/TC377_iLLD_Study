@@ -1,0 +1,12 @@
+AURIX Flasher Software Tool 3.1.0.0, built on 2026/9/1 15:05:13
+::Connected to device... [TC3x] TC37x
+::Loading  HEX file ..........(Pass)
+::Checking firmware and address map ..........
+ ::Warning: The given program file is trying to write on reserved memory addresses, which will be skipped.
+::Erasing Flash memory .......... (Pass)
+::Programming Flash memory ..........(Pass)
+::Verifying Flash memory ..........
+::Flash memory matches expected value (Pass)
+::Generating the log file: D:/ACS_WorkSpace/TC377_iLLD_Study/Debug/final500-flash.xml .......... (Pass)
+Overall time: 2018 ms
+AURIXFlasher Exit Status: Pass
