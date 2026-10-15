@@ -7,7 +7,7 @@ if ($LASTEXITCODE) { throw 'Fault injection failed' }
 Start-Sleep -Seconds 20
 & Debug/overclock-mcd.exe f881fe08 f0036050 f0036a20 > "Debug/wdt-fixed-$Fault-reset.log"
 if ($LASTEXITCODE) { & Debug/overclock-mcd.exe f881fe08 f0036050 f0036a20 > "Debug/wdt-fixed-$Fault-reset.log" }
-if (Select-String -Path "Debug/wdt-fixed-$Fault-reset.log" -Pattern '^state=3$' -Quiet) { & Debug/overclock-mcd.exe run > "Debug/wdt-fixed-$Fault-run.log" }
+if (!(Select-String -Path "Debug/wdt-fixed-$Fault-reset.log" -Pattern '^state=1$' -Quiet)) { throw 'Watchdog did not resume autonomously' }
 Start-Sleep -Seconds 3
 & Debug/overclock-read.ps1 -Label "wdt-fixed-$Fault" > "Debug/wdt-fixed-$Fault-summary.log"
 if ($LASTEXITCODE) { & Debug/overclock-read.ps1 -Label "wdt-fixed-$Fault" > "Debug/wdt-fixed-$Fault-summary.log" }

@@ -273,6 +273,15 @@ void Platform_Init(void)
     IfxCan_Can_Config cc;
     IfxCan_Can_initModuleConfig(&cc, &MODULE_CAN0);
     IfxCan_Can_initModule(&can, &cc);
+    /* 冷上电的消息 RAM 内容/ECC 未定义；先按 MCR.RINIT 流程初始化，再启用节点。 */
+    MODULE_CAN0.MCR.U |= 0xC0000000U;
+    while (MODULE_CAN0.MCR.B.RBUSY) {}
+    MODULE_CAN0.MCR.B.RINIT = 0;
+    MODULE_CAN0.MCR.B.RINIT = 1;
+    (void)MODULE_CAN0.MCR.U;
+    while (MODULE_CAN0.MCR.B.RBUSY) {}
+    MODULE_CAN0.MCR.B.RINIT = 0;
+    MODULE_CAN0.MCR.U &= ~0xC0000000U;
     for (uint32 i = 0; i < 2; ++i)
     {
         IfxCan_Can_NodeConfig node;
