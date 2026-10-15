@@ -1,0 +1,12 @@
+{
+  "uptimeSeconds": 183,
+  "cpuHz": "5e+08",
+  "spbHz": "1.66667e+08",
+  "stmHz": "1.66667e+08",
+  "gtmHz": "3.33333e+08",
+  "mbistPassed": 3,
+  "uartBytes": 1048576,
+  "uartErrors": 0,
+  "allFunctionErrorsAndRuntimeAlarmsZero": true,
+  "imageHashMatches": true
+}

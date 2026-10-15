@@ -1,0 +1,110 @@
+[
+  {
+    "test": "repeat",
+    "cpuMHz": 500,
+    "spbMHz": 250,
+    "dcoMHz": 1000,
+    "fsiMHz": 250,
+    "accenErrors": 32,
+    "accenReads": 32,
+    "wdtErrors": 1,
+    "wdtReads": 32,
+    "lowClockBeforeAndAfterCorrect": true
+  },
+  {
+    "test": "idle",
+    "cpuMHz": 500,
+    "spbMHz": 250,
+    "dcoMHz": 1000,
+    "fsiMHz": 250,
+    "accenErrors": 32,
+    "accenReads": 32,
+    "wdtErrors": 0,
+    "wdtReads": 32,
+    "lowClockBeforeAndAfterCorrect": true
+  },
+  {
+    "test": "dco500",
+    "cpuMHz": 500,
+    "spbMHz": 250,
+    "dcoMHz": 500,
+    "fsiMHz": 250,
+    "accenErrors": 32,
+    "accenReads": 32,
+    "wdtErrors": 1,
+    "wdtReads": 32,
+    "lowClockBeforeAndAfterCorrect": true
+  },
+  {
+    "test": "dco500-fsi500",
+    "cpuMHz": 500,
+    "spbMHz": 250,
+    "dcoMHz": 500,
+    "fsiMHz": 500,
+    "accenErrors": 32,
+    "accenReads": 32,
+    "wdtErrors": 1,
+    "wdtReads": 32,
+    "lowClockBeforeAndAfterCorrect": true
+  },
+  {
+    "test": "dco1000-fsi500",
+    "cpuMHz": 500,
+    "spbMHz": 250,
+    "dcoMHz": 1000,
+    "fsiMHz": 500,
+    "accenErrors": 32,
+    "accenReads": 32,
+    "wdtErrors": 1,
+    "wdtReads": 32,
+    "lowClockBeforeAndAfterCorrect": true
+  },
+  {
+    "test": "sweep200",
+    "cpuMHz": 400,
+    "spbMHz": 200,
+    "dcoMHz": 800,
+    "fsiMHz": 200,
+    "accenErrors": 0,
+    "accenReads": 32,
+    "wdtErrors": 0,
+    "wdtReads": 32,
+    "lowClockBeforeAndAfterCorrect": true
+  },
+  {
+    "test": "sweep225",
+    "cpuMHz": 450,
+    "spbMHz": 225,
+    "dcoMHz": 900,
+    "fsiMHz": 225,
+    "accenErrors": 32,
+    "accenReads": 32,
+    "wdtErrors": 0,
+    "wdtReads": 32,
+    "lowClockBeforeAndAfterCorrect": true
+  },
+  {
+    "test": "sweep240",
+    "cpuMHz": 480,
+    "spbMHz": 240,
+    "dcoMHz": 960,
+    "fsiMHz": 240,
+    "accenErrors": 32,
+    "accenReads": 32,
+    "wdtErrors": 0,
+    "wdtReads": 32,
+    "lowClockBeforeAndAfterCorrect": true
+  },
+  {
+    "test": "positive166",
+    "cpuMHz": 500,
+    "spbMHz": 166.66666666666666,
+    "dcoMHz": 1000,
+    "fsiMHz": 250,
+    "accenErrors": 0,
+    "accenReads": 32,
+    "wdtErrors": 0,
+    "wdtReads": 32,
+    "lowClockBeforeAndAfterCorrect": true
+  }
+]

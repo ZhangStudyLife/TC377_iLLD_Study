@@ -1,0 +1,29 @@
+        extern volatile uint32 pllDiag[128];
+        pllDiag[0] = 0x2500125;
+        pllDiag[1] = SCU_ACCEN10.U;
+        pllDiag[2] = SCU_WDTS_CON0.U;
+        uint16 sp = IfxScuWdt_getSafetyWatchdogPassword();
+        IfxScuWdt_clearSafetyEndinit(sp);
+        uint32 c0 = SCU_CCUCON0.U, c5 = SCU_CCUCON5.U;
+        SCU_CCUCON0.U = (c0 & ~0xF0000U) | 0x20000U;
+        SCU_CCUCON5.U = (c5 & ~0xF0U) | 0x40000020U;
+        __dsync();
+        while (SCU_CCUCON0.B.LCK) {}
+        for (uint32 i = 0; i < 32; ++i) {
+            __dsync();
+            pllDiag[4 + i] = SCU_ACCEN10.U;
+        }
+        for (uint32 i = 0; i < 32; ++i) {
+            __dsync();
+            pllDiag[36 + i] = SCU_WDTS_CON0.U;
+        }
+        SCU_CCUCON0.U = c0;
+        SCU_CCUCON5.U = c5 | 0x40000000U;
+        __dsync();
+        while (SCU_CCUCON0.B.LCK) {}
+        IfxScuWdt_setSafetyEndinit(sp);
+        pllDiag[68] = SCU_ACCEN10.U;
+        pllDiag[69] = SCU_WDTS_CON0.U;
+        pllDiag[70] = SCU_WDTS_SR.U;
+        pllDiag[71] = 0x600D250;
+        __debug(); while (1) {}

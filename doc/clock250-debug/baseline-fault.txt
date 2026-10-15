@@ -1,0 +1,15 @@
+state=3
+address=f881fe08 u32=8000790a float=-4.34206e-41 bytes_ok=4
+address=f881ffac u32=80004872 float=-2.59885e-41 bytes_ok=4
+address=f881ff10 u32=00000403 float=1.43913e-42 bytes_ok=4
+address=f8819010 u32=00000000 float=0 bytes_ok=4
+address=f8819018 u32=00000008 float=1.12104e-44 bytes_ok=4
+address=f881901c u32=f00362a8 float=-1.62647e+29 bytes_ok=4
+address=f00362a8 u32=fffc0000 float=nan bytes_ok=4
+address=f00362ac u32=fffc0000 float=nan bytes_ok=4
+address=f00362b0 u32=fff00000 float=nan bytes_ok=4
+address=f00363f4 u32=fff00000 float=nan bytes_ok=4
+address=f00369dc u32=0001fc00 float=1.82236e-40 bytes_ok=4
+address=f8040034 u32=00000000 float=0 bytes_ok=4
+address=f8040068 u32=0716030f float=1.12856e-34 bytes_ok=4
+address=f804006c u32=00040018 float=3.67376e-40 bytes_ok=4
