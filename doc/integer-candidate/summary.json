@@ -1,0 +1,15 @@
+{
+  "candidateResult": "FAIL: runtime Flash Stored Configuration Error ALM7[31]",
+  "candidateUptimeSeconds": 216,
+  "candidateAlarm7": 2147483648,
+  "fsi250CountertestResult": "FAIL: ALM7[31] remains",
+  "restoredUptimeSeconds": 167,
+  "restoredFunctionalErrors": 0,
+  "restoredRuntimeSmuAndSshFlags": 0,
+  "restoredPsprMbistPassed": 3,
+  "restoredUartBytes": 1048576,
+  "restoredUartErrors": 0,
+  "restoredWatchdogAutonomousRecoveryCases": 4,
+  "newImageColdBootTested": false,
+  "newImageLongSoakTested": false
+}

@@ -1,0 +1,4 @@
+state=1
+address=f881fe08 u32=80002398 float=-1.27686e-41 bytes_ok=4
+address=f0036050 u32=10010008 float=2.54408e-29 bytes_ok=4
+address=f0036a20 u32=00030000 float=2.75506e-40 bytes_ok=4

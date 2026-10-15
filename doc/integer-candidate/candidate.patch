@@ -1,0 +1,56 @@
+diff --git a/Configurations/Ifx_Cfg.h b/Configurations/Ifx_Cfg.h
+index 8adbe3c..d534c4a 100644
+--- a/Configurations/Ifx_Cfg.h
++++ b/Configurations/Ifx_Cfg.h
+@@ -45,17 +45,17 @@
+ /* 300 MHz 是 iLLD 配置标签；20 MHz * 50 / 2 实际为 500 MHz。 */
+ #define IFXSCU_CFG_SYS_PLL_20MHZ_300MHZ {0, 49, 7}
+ #define IFXSCU_CFG_PLL_STEPS_20MHZ_300MHZ {3, 0.001F}, {2, 0.001F}, {1, 0.001F}
+-#define IFXSCU_CFG_SPBDIV_300MHZ 3 /* SPB=166.667 MHz */
+-#define IFXSCU_CFG_STMDIV_300MHZ 3 /* STM=166.667 MHz，SPB/STM=1 */
++#define IFXSCU_CFG_SPBDIV_300MHZ 4
++#define IFXSCU_CFG_STMDIV_300MHZ 2
+ #define IFXSCU_CFG_BBBDIV_300MHZ 2 /* BBB=250 MHz，SRI/BBB=2 */
+-#define IFXSCU_CFG_FSIDIV_300MHZ 3 /* FSI=166.667 MHz，FSI/(SPB/2)=2；250 MHz 会触发 ALM7[31] */
+-#define IFXSCU_CFG_GTMDIV_300MHZ 1 /* GTM=2*SPB=333.333 MHz */
+-#define IFXSCU_CFG_MCANHDIV_300MHZ 3 /* MCANH=SPB=166.667 MHz */
+-#define IFXSCU_CFG_GETHDIV_300MHZ 3 /* GETH=166.667 MHz */
++#define IFXSCU_CFG_FSIDIV_300MHZ 1
++#define IFXSCU_CFG_GTMDIV_300MHZ 2
++#define IFXSCU_CFG_MCANHDIV_300MHZ 4
++#define IFXSCU_CFG_GETHDIV_300MHZ 2
+ #define TC377_FLASH_RFLASH 15
+-#define TC377_FLASH_RECC 3
+-#define TC377_DFLASH_RFLASH 24
+-#define TC377_DFLASH_RECC 4
++#define TC377_FLASH_RECC 4
++#define TC377_DFLASH_RFLASH 49
++#define TC377_DFLASH_RECC 7
+ #elif TC377_CPU_MHZ == 300
+ #define TC377_FLASH_RFLASH 8
+ #define TC377_FLASH_RECC 2
+diff --git a/Cpu0_Main.c b/Cpu0_Main.c
+index 1159704..88127dd 100644
+--- a/Cpu0_Main.c
++++ b/Cpu0_Main.c
+@@ -58,8 +58,9 @@ static void Pwm_Init(void)
+     gtmCmuHz = hz;
+     gtmTom1Hz = IfxGtm_getClusterFrequency(&MODULE_GTM, IfxGtm_Cluster_1);
+     IfxGtm_Cmu_setGclkFrequency(&MODULE_GTM, hz);
+-    /* TOM 的 FXCLK1 = GCLK/16，TIM 的 CLK0 同样分频，覆盖 1~100 kHz。 */
+-    IfxGtm_Cmu_setClkFrequency(&MODULE_GTM, IfxGtm_Cmu_Clk_0, hz / 16.0F);
++    /* TIM/TOM 共用 CMU_CLK0=50 MHz，1 kHz 周期50000计数。 */
++    IfxGtm_Cmu_setClkFrequency(&MODULE_GTM, IfxGtm_Cmu_Clk_0, hz / 5.0F);
++    MODULE_GTM.CMU.FXCLK.CTRL.B.FXCLK_SEL = 1;
+     IfxGtm_Cmu_enableClocks(&MODULE_GTM, IFXGTM_CMU_CLKEN_FXCLK | IFXGTM_CMU_CLKEN_CLK0);
+
+     IfxGtm_Tim_In_Config input;
+@@ -75,7 +76,7 @@ static void Pwm_Init(void)
+     IfxGtm_Tom_Pwm_initConfig(&output, &MODULE_GTM);
+     output.tom = IfxGtm_Tom_1;
+     output.tomChannel = IfxGtm_Tom_Ch_12;
+-    output.clock = IfxGtm_Tom_Ch_ClkSrc_cmuFxclk1;
++    output.clock = IfxGtm_Tom_Ch_ClkSrc_cmuFxclk0;
+     output.period = (uint32)(capture.captureClockFrequency / 1000.0F + 0.5F);
+     output.dutyCycle = output.period / 4;
+     output.synchronousUpdateEnabled = TRUE;
