@@ -12,6 +12,7 @@
 IFX_ALIGN(4) IfxCpu_syncEvent g_cpuSyncEvent = 0;
 volatile uint32 stressLoops[3], stressErrors[3];
 volatile float32 cpu0Hz, cpu1Hz, cpu2Hz, sriHz, spbHz, stmHz, gtmHz;
+volatile float32 gtmCmuHz, gtmTom1Hz, pwmTickHz;
 volatile float32 pwmMeasuredHz, pwmMeasuredDuty;
 volatile uint32 uptimeSeconds, stmInterrupts, stmLate, stmMaxLateTicks;
 volatile uint32 pwmSamples[9], pwmErrors[9], pwmIncoherent, pwmSkipped;
@@ -49,7 +50,13 @@ static void Pwm_SetStage(void)
 static void Pwm_Init(void)
 {
     IfxGtm_enable(&MODULE_GTM);
+    uint32 protection = MODULE_GTM.CTRL.B.RF_PROT;
+    MODULE_GTM.CTRL.B.RF_PROT = 0;
+    MODULE_GTM.CLS_CLK_CFG.U = (MODULE_GTM.CLS_CLK_CFG.U & ~0xFU) | 0x5U; /* TIM0/TOM1 不再二分频。 */
+    MODULE_GTM.CTRL.B.RF_PROT = protection;
     float32 hz = IfxGtm_Cmu_getModuleFrequency(&MODULE_GTM);
+    gtmCmuHz = hz;
+    gtmTom1Hz = IfxGtm_getClusterFrequency(&MODULE_GTM, IfxGtm_Cluster_1);
     IfxGtm_Cmu_setGclkFrequency(&MODULE_GTM, hz);
     /* TOM 的 FXCLK1 = GCLK/16，TIM 的 CLK0 同样分频，覆盖 1~100 kHz。 */
     IfxGtm_Cmu_setClkFrequency(&MODULE_GTM, IfxGtm_Cmu_Clk_0, hz / 16.0F);
@@ -62,6 +69,7 @@ static void Pwm_Init(void)
     input.capture.clock = IfxGtm_Cmu_Clk_0;
     input.capture.mode = Ifx_Pwm_Mode_leftAligned;
     IfxGtm_Tim_In_init(&capture, &input);
+    pwmTickHz = capture.captureClockFrequency;
 
     IfxGtm_Tom_Pwm_Config output;
     IfxGtm_Tom_Pwm_initConfig(&output, &MODULE_GTM);

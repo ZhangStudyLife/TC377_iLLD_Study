@@ -1,0 +1,39 @@
+{
+  "firmware": "firmware-sha256.json",
+  "snapshots": 28,
+  "startUptimeSeconds": 38,
+  "endUptimeSeconds": 1272,
+  "observedSeconds": 1234,
+  "allErrorsAndRuntimeAlarmsZero": true,
+  "threeCoresAndIpcProgressEverySnapshot": true,
+  "stressLoops": [
+    42142767,
+    43715670,
+    43719163
+  ],
+  "ipcPackets": 244758365.0,
+  "pwmSamples": 18233434.0,
+  "stmInterrupts": 1272223,
+  "stmMaxLateMicroseconds": 9.858,
+  "ccuInterrupts": 127225,
+  "gptChecks": 1271,
+  "dmaChecks": 1272,
+  "crcChecks": 1272,
+  "canFrames": [
+    1272,
+    1272,
+    1272,
+    1272
+  ],
+  "screenFrames": 1272,
+  "smuInterrupts": 1272,
+  "mbistPassed": 3,
+  "peakTemperatureC": "64.4916",
+  "uartTotalBytes": 5242880,
+  "uartAfterColdbootBytes": 1048576,
+  "uartErrors": 0,
+  "watchdogAutonomousRecoveryCases": 4,
+  "baseline300Seconds": 235,
+  "baseline300UartBytes": 1048576,
+  "restored500ImageHashMatches": true
+}
